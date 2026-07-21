@@ -63,12 +63,12 @@ data class PresenceUpdate(
 )
 
 /**
- * A representative subset of `/api/social/*` — friends list/requests plus a
+ * A representative subset of `/api/social/…` — friends list/requests plus a
  * presence heartbeat. All require the user's JWT (`get_current_user`),
  * tagged `X-Bridge-Auth-Mode: user`.
  *
  * NOT modeled in this pass (left for follow-up): profile endpoints
- * (/api/social/profile/*, including avatar/banner upload and pinned tracks),
+ * (/api/social/profile/…, including avatar/banner upload and pinned tracks),
  * blocking (/api/social/block*), friend nicknames/tags/leaderboard,
  * presence-for-friends / listening-together, profile comments,
  * compatibility, discovery (/social/discover, /social/similar-listeners,

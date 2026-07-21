@@ -84,7 +84,7 @@ data class SessionsResponse(
  * (`get_current_user`, main.py ~L772), tagged `X-Bridge-Auth-Mode: user` for
  * [com.stash.opusplayer.bridge.BridgeAuthInterceptor].
  *
- * NOT modeled in this pass (left for follow-up): /auth/2fa/* (setup/verify/
+ * NOT modeled in this pass (left for follow-up): /auth/2fa/… (setup/verify/
  * disable/login), PUT /auth/me, /auth/change-password, /auth/delete-account,
  * avatar upload, privacy settings.
  */

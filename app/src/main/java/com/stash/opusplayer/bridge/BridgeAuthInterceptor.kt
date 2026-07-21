@@ -5,7 +5,7 @@ import okhttp3.Interceptor
 import okhttp3.Response
 
 /** The internal, request-scoped marker header each Retrofit API method in
- * `bridge/api/*` tags itself with via `@Headers("X-Bridge-Auth-Mode: ...")`.
+ * `bridge/api/` tags itself with via `@Headers("X-Bridge-Auth-Mode: ...")`.
  * [BridgeAuthInterceptor] reads it, strips it, and substitutes the real
  * `Authorization` header before the request leaves the device — it is never
  * actually sent to the server. Kept as a plain string constant (rather than
@@ -23,14 +23,14 @@ enum class BridgeAuthMode(val headerValue: String) {
     /** `Authorization: Bearer <IOS_BRIDGE_API_KEY>` — for routes gated by
      * check_auth() (main.py ~L744): /api/search, /api/stream(/proxy),
      * /api/track, /api/resolve, /api/download*, /api/spotify/resolve,
-     * /api/playlist/*, /api/lyrics*, /api/radio, /api/search/trending,
+     * /api/playlist/…, /api/lyrics*, /api/radio, /api/search/trending,
      * /api/search/suggestions. Only enforced server-side at all if the
      * operator set IOS_BRIDGE_API_KEY. */
     API_KEY("apikey"),
 
     /** `Authorization: Bearer <user JWT>` — for routes gated by
      * get_current_user() (main.py ~L772): /auth/me, /auth/logout,
-     * /auth/sessions, /user/playlists, /user/favorites, /api/social/*, etc. */
+     * /auth/sessions, /user/playlists, /user/favorites, /api/social/…, etc. */
     USER("user");
 
     companion object {
