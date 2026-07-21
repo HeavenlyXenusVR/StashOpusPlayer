@@ -11,6 +11,8 @@ buildscript {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         // Gradle Play Publisher for Play Store uploads
         classpath 'com.github.triplet.gradle:play-publisher:3.9.0'
+        // Hilt dependency injection
+        classpath 'com.google.dagger:hilt-android-gradle-plugin:2.50'
     }
 }
 

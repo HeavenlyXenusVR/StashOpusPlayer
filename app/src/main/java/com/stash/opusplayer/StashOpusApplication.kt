@@ -1,7 +1,9 @@
 package com.stash.opusplayer
 
 import android.app.Application
+import dagger.hilt.android.HiltAndroidApp
 
+@HiltAndroidApp
 class StashOpusApplication : Application() {
     
     // Shared player manager for the whole app
