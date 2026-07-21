@@ -12,6 +12,9 @@ import com.stash.opusplayer.data.database.PlaylistDao
 import com.stash.opusplayer.data.database.PlaylistEntity
 import com.stash.opusplayer.data.database.PlaylistTrackEntity
 import com.stash.opusplayer.data.database.PlaylistWithCount
+import com.stash.opusplayer.data.database.SongDao
+import com.stash.opusplayer.data.database.toEntity
+import com.stash.opusplayer.data.database.toSong
 import com.stash.opusplayer.utils.MetadataExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +30,7 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
     private val favoriteDao = database.favoriteDao()
     private val playlistDao: PlaylistDao = database.playlistDao()
     val metadataDao = database.metadataDao()
+    private val songDao: SongDao = database.songDao()
     private val metadataExtractor = MetadataExtractor(context)
     private val prefs: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
     
@@ -60,7 +64,45 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
         playlistDao.deleteTrackByPlaylistAndSong(playlistId, songId)
     }
 
+    // Persisted-index-backed replacement for the old live-MediaStore-every-call behavior.
+    // Reads the Room-backed "songs" index (populated/refreshed by LibraryScanWorker and
+    // refreshSongIndex()) instead of hitting MediaStore synchronously on every call.
+    //
+    // First-run handling: if the index hasn't been populated yet (e.g. app just installed,
+    // before the first background scan has completed), fall back to a live MediaStore scan
+    // right here and persist the result, so callers never see an empty library on first launch
+    // while still getting the fast, cached path on every call afterwards.
     suspend fun getAllSongs(): List<Song> = withContext(Dispatchers.IO) {
+        val cached = try {
+            songDao.getAllSongs()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (cached.isNotEmpty()) {
+            cached.map { it.toSong() }
+        } else {
+            refreshSongIndex()
+        }
+    }
+
+    // Forces a fresh MediaStore scan and persists the result into the song index in one shot.
+    // Used for the first-run fallback above, and by LibraryScanWorker / LibraryRescanWorker to
+    // keep the persisted index up to date (including dropping rows for songs that were removed).
+    suspend fun refreshSongIndex(): List<Song> = withContext(Dispatchers.IO) {
+        val scanned = scanSongsFromMediaStore()
+        try {
+            songDao.replaceAll(scanned.map { it.toEntity() })
+        } catch (_: Exception) {
+            // Persisting the index is best-effort; still return the freshly scanned songs.
+        }
+        scanned
+    }
+
+    // The original live MediaStore cursor query (this is what getAllSongs() used to do on
+    // every single call). Kept as its own method so the worker that populates the persisted
+    // index and the first-run fallback above can share this exact cursor-reading logic instead
+    // of duplicating it.
+    suspend fun scanSongsFromMediaStore(): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val sortOrder = "${MediaStore.Audio.Media.DISPLAY_NAME} ASC"

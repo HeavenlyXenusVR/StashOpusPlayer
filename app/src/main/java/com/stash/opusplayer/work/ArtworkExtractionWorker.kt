@@ -27,8 +27,10 @@ class ArtworkExtractionWorker(
             val repo = MusicRepository(applicationContext)
             val metadataExtractor = MetadataExtractor(applicationContext)
             
-            // Get all songs from MediaStore and custom folders
-            val mediaStoreSongs = repo.getAllSongs()
+            // Get all songs from MediaStore and custom folders. Use a direct live MediaStore
+            // scan (not the cached song index) since this is an explicit "re-extract artwork
+            // for everything" pass that wants the freshest possible data.
+            val mediaStoreSongs = repo.scanSongsFromMediaStore()
             val customFolderSongs = repo.scanCustomFolders()
             
             val uniqueSongs = (mediaStoreSongs + customFolderSongs).distinctBy { it.path }

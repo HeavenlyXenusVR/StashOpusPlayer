@@ -19,6 +19,9 @@ class StashOpusApplication : Application() {
         try {
             com.stash.opusplayer.work.AutoEmbedWorker.schedule(this)
         } catch (_: Exception) {}
+        try {
+            com.stash.opusplayer.work.LibraryScanWorker.schedule(this)
+        } catch (_: Exception) {}
     }
 
     private fun installCrashLogger() {
