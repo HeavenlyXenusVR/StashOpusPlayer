@@ -188,7 +188,17 @@ dependencies {
 
     // Networking for online artwork
     implementation 'com.squareup.okhttp3:okhttp:4.11.0'
-    
+
+    // Jetpack DataStore (Preferences) — used by bridge/BridgeConfig.kt to persist
+    // the self-hosted Lumisound bridge server's base URL / API key.
+    implementation 'androidx.datastore:datastore-preferences:1.0.0'
+
+    // EncryptedSharedPreferences — used by bridge/BridgeTokenStore.kt to store the
+    // bridge login JWT. 1.1.0-alpha06 is the long-standing de-facto stable release
+    // of this library (androidx.security:security-crypto has not shipped a
+    // non-alpha version) and is what production apps use in practice.
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+
     // YouTube Data API and video downloading
     implementation 'com.google.apis:google-api-services-youtube:v3-rev20220719-2.0.0'
     implementation 'com.google.api-client:google-api-client-android:2.0.0'
