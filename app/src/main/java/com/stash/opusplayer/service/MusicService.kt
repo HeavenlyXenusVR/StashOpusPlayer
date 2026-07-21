@@ -32,11 +32,17 @@ import com.stash.opusplayer.audio.TrackMetadata
 import com.stash.opusplayer.audio.ProfessionalAudioProcessor
 import com.stash.opusplayer.audio.AudioProfile
 import com.stash.opusplayer.audio.SpectrumAnalyzer
+import com.stash.opusplayer.audio.ParallelReverbAudioProcessor
+import com.stash.opusplayer.audio.ReverbRenderersFactory
 import com.stash.opusplayer.audio.settings.EnhancedAudioSettings
+import com.stash.opusplayer.audio.settings.ReverbRoomPreset
+import com.stash.opusplayer.audio.settings.CrossfadeCurve
 import com.stash.opusplayer.data.Song
 import com.stash.opusplayer.ui.MainActivity
 import kotlin.math.pow
 import kotlin.math.log10
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +59,12 @@ class MusicService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 private lateinit var activePlayer: ExoPlayer
     private var sparePlayer: ExoPlayer? = null
+    // Parallel wet/dry algorithmic reverb (see ParallelReverbAudioProcessor), one instance
+    // per player since each ExoPlayer's AudioSink runs its own playback thread; sharing a
+    // single AudioProcessor instance across both would race its internal delay-line state
+    // during a crossfade overlap where both players are outputting simultaneously.
+    private lateinit var reverbProcessorActive: ParallelReverbAudioProcessor
+    private lateinit var reverbProcessorSpare: ParallelReverbAudioProcessor
     private var isCrossfading: Boolean = false
     private var crossfadeCheckRunnable: Runnable? = null
     private lateinit var equalizerManager: EqualizerManager
@@ -87,6 +99,24 @@ private lateinit var activePlayer: ExoPlayer
     private var crossfadeDurationMs: Long = 1000L
     private var audioFocusEnabled: Boolean = true
     private var crossfadePollingEnabled: Boolean = true
+    // Smart Crossfade (BPM-aware beatmatching) and the volume curve used across any crossfade's
+    // overlap window. Mirrors AudioSettings.smartCrossfadeEnabled / AudioSettings.crossfadeCurve;
+    // kept as separate primitive fields here to match this file's existing style for crossfade
+    // state (crossfadeEnabled/crossfadeDurationMs above) rather than holding an AudioSettings
+    // instance directly.
+    private var smartCrossfadeEnabled: Boolean = false
+    private var crossfadeCurve: CrossfadeCurve = CrossfadeCurve.EQUAL_POWER
+
+    /**
+     * True when EITHER crossfade mode is on. Manual ([crossfadeEnabled]) and Smart Crossfade
+     * ([smartCrossfadeEnabled]) are mutually exclusive in the UI, but either one must drive an
+     * actual crossfade transition -- mirrors [AudioSettings.crossfadeActive]. All trigger/gating
+     * sites (crossfade polling start/stop, the true-crossfade guard clause) must check this
+     * rather than [crossfadeEnabled] alone so Smart Crossfade can fire even when the plain
+     * manual toggle is off.
+     */
+    private val crossfadeActive: Boolean
+        get() = crossfadeEnabled || smartCrossfadeEnabled
 
     // AB repeat
     private val abRepeatManager by lazy { ABRepeatManager(this) }
@@ -141,7 +171,29 @@ private lateinit var activePlayer: ExoPlayer
         setupPlayerNotification()
     }
 
-private fun initializePlayers() {
+    /**
+     * Gapless playback investigation (AudioSettings.gaplessEnabled, when crossfade is off /
+     * !crossfadeActive): NO CODE CHANGE was made here -- this already works for free.
+     *
+     * `activePlayer` is a single, long-lived `ExoPlayer` onto which the whole queue is loaded via
+     * `setMediaItems(...)` (see [replaceQueueAndPlay], [restoreQueueStateIfAny]) and left to
+     * auto-advance through its `Timeline` on its own (`Player.MEDIA_ITEM_TRANSITION_REASON_AUTO`).
+     * That is exactly ExoPlayer's baseline playback model -- there is no `ExoPlayer.Builder` flag
+     * to opt into "gapless mode" for a single continuous player because seamless period-to-period
+     * transitions (the renderer prefetches/decodes the next period ahead of the boundary and
+     * switches at the exact sample) are just how Timeline-based playback works when nothing
+     * (seeking, re-preparing, stopping) interrupts it between items. Crossfade is the thing that
+     * *would* interrupt it (loading the next item onto a second player, ramping volumes, then
+     * swapping); when crossfade is off, none of that runs and the normal gapless path is intact.
+     *
+     * Opus/Ogg specifics: Ogg Opus carries the required "pre-skip" sample count in its ID header
+     * (encoder priming samples) and end-trim comes from the final page's granule position; ExoPlayer's
+     * Ogg/Opus extractor path already reads and applies both, so no extra trimming config is needed
+     * here. Ogg Vorbis is analogous (granule-position-based end trim). Correct gapless boundaries
+     * still depend on the source files actually carrying accurate header/granule metadata -- that's
+     * an encoding-time concern, not something this service can fix at playback time.
+     */
+    private fun initializePlayers() {
         // Configure a custom HTTP data source with a modern mobile user-agent for broader CDN compatibility
         val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 StashAudio/8.1.6")
@@ -150,13 +202,19 @@ private fun initializePlayers() {
         val defaultDsFactory = androidx.media3.datasource.DefaultDataSource.Factory(this, httpFactory)
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(defaultDsFactory)
 
-activePlayer = ExoPlayer.Builder(this)
+val activeReverbRenderersFactory = ReverbRenderersFactory(this)
+        reverbProcessorActive = activeReverbRenderersFactory.reverbProcessor
+        activePlayer = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setRenderersFactory(activeReverbRenderersFactory)
             .build()
 
         // Prepare spare player for experimental crossfade
+        val spareReverbRenderersFactory = ReverbRenderersFactory(this)
+        reverbProcessorSpare = spareReverbRenderersFactory.reverbProcessor
         sparePlayer = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setRenderersFactory(spareReverbRenderersFactory)
             .build()
         try { sparePlayer?.setAudioAttributes(audioAttributes, audioFocusEnabled) } catch (_: Exception) {}
         try { sparePlayer?.setHandleAudioBecomingNoisy(true) } catch (_: Exception) {}
@@ -169,6 +227,10 @@ activePlayer = ExoPlayer.Builder(this)
             appVolumeUi = prefs.getFloat("app_volume", 1.0f).coerceIn(0f, 1f)
             crossfadeEnabled = prefs.getBoolean("crossfade_enabled", false)
             crossfadeDurationMs = prefs.getLong("crossfade_duration_ms", 1000L).coerceIn(0L, 5000L)
+            smartCrossfadeEnabled = prefs.getBoolean("smart_crossfade_enabled", false)
+            crossfadeCurve = try {
+                CrossfadeCurve.valueOf(prefs.getString("crossfade_curve", CrossfadeCurve.EQUAL_POWER.name) ?: CrossfadeCurve.EQUAL_POWER.name)
+            } catch (_: Exception) { CrossfadeCurve.EQUAL_POWER }
             skipSilenceEnabled = prefs.getBoolean("skip_silence_enabled", false)
             exactSeeks = prefs.getBoolean("exact_seeks", true)
             crossfadePollingEnabled = prefs.getBoolean("crossfade_polling_enabled", true)
@@ -222,6 +284,7 @@ val savedShuffle = prefs.getBoolean("playback_shuffle", false)
                 .putFloat("app_volume", 1.0f)
                 .putBoolean("crossfade_enabled", false)
                 .putLong("crossfade_duration_ms", 0L)
+                .putBoolean("smart_crossfade_enabled", false)
                 .putBoolean("skip_silence_enabled", false)
                 .putBoolean("replaygain_enabled", false)
                 .putInt("reverb_preset", 0)
@@ -240,6 +303,7 @@ val savedShuffle = prefs.getBoolean("playback_shuffle", false)
             setAppVolume(1.0f)
             setCrossfadeEnabled(false)
             setCrossfadeDuration(0L)
+            setSmartCrossfadeEnabled(false)
             skipSilenceEnabled = false
             try { activePlayer.setSkipSilenceEnabled(false) } catch (_: Exception) {}
             try { sparePlayer?.setSkipSilenceEnabled(false) } catch (_: Exception) {}
@@ -298,7 +362,7 @@ val savedShuffle = prefs.getBoolean("playback_shuffle", false)
             // Persist
             try { saveQueueState() } catch (_: Exception) {}
             // Ensure polling according to current settings
-            if (crossfadePollingEnabled && crossfadeEnabled && crossfadeDurationMs > 0L) startCrossfadePolling() else stopCrossfadePolling()
+            if (crossfadePollingEnabled && crossfadeActive && crossfadeDurationMs > 0L) startCrossfadePolling() else stopCrossfadePolling()
         } catch (e: Exception) {
             android.util.Log.e("MusicService", "REPLACE_QUEUE_AND_PLAY failed", e)
         }
@@ -321,7 +385,7 @@ val savedShuffle = prefs.getBoolean("playback_shuffle", false)
             sb.appendLine("--- DUMP_PLAYBACK_STATE ---")
             sb.appendLine("playing=$isPlaying state=$ps idx=$idx/$count hasNext=$hasNext pos=$pos dur=$dur")
             sb.appendLine("shuffle=$shuffle repeat=$repeat exactSeeks=$exactSeeks seekParams=${try { p.seekParameters } catch (_: Exception) { null }}")
-            sb.appendLine("appVolumeUi=$appVolumeUi activeVol=$vol skipSilence=$skipSilenceEnabled crossfadeEnabled=$crossfadeEnabled cfDur=$crossfadeDurationMs cfPolling=$crossfadePollingEnabled rgEnabled=$rgEnabled allowBoost=$rgAllowBoost")
+            sb.appendLine("appVolumeUi=$appVolumeUi activeVol=$vol skipSilence=$skipSilenceEnabled crossfadeEnabled=$crossfadeEnabled smartCrossfadeEnabled=$smartCrossfadeEnabled crossfadeCurve=$crossfadeCurve cfDur=$crossfadeDurationMs cfPolling=$crossfadePollingEnabled rgEnabled=$rgEnabled allowBoost=$rgAllowBoost")
             try {
                 val titles = (0 until count).mapNotNull { i ->
                     try { p.getMediaItemAt(i).mediaMetadata.title?.toString() ?: "" } catch (_: Exception) { null }
@@ -362,6 +426,8 @@ val savedShuffle = prefs.getBoolean("playback_shuffle", false)
                         "SET_APP_VOLUME",
                         "SET_CROSSFADE_ENABLED",
                         "SET_CROSSFADE_DURATION",
+                        "SET_SMART_CROSSFADE_ENABLED",
+                        "SET_CROSSFADE_CURVE",
                         "SET_AUDIO_FOCUS",
                         "AUDIO_TEST_MAX_VOLUME",
                         "REPLACE_QUEUE_AND_PLAY",
@@ -508,6 +574,14 @@ equalizerManager.setPreset(com.stash.opusplayer.audio.EqualizerPreset.valueOf(na
                                 setCrossfadeEnabled(false)
                             }
                         }
+                        "SET_SMART_CROSSFADE_ENABLED" -> {
+                            val enabled = args.getBoolean("enabled", false)
+                            setSmartCrossfadeEnabled(enabled)
+                        }
+                        "SET_CROSSFADE_CURVE" -> {
+                            val name = args.getString("curve") ?: CrossfadeCurve.EQUAL_POWER.name
+                            try { setCrossfadeCurve(CrossfadeCurve.valueOf(name)) } catch (_: Exception) {}
+                        }
                         "SET_AUDIO_FOCUS" -> {
                             val enabled = args.getBoolean("enabled", true)
                             setAudioFocusEnabled(enabled)
@@ -521,7 +595,7 @@ equalizerManager.setPreset(com.stash.opusplayer.audio.EqualizerPreset.valueOf(na
                         "SET_CROSSFADE_POLLING_ENABLED" -> {
                             crossfadePollingEnabled = args.getBoolean("enabled", true)
                             getSharedPreferences("settings", 0).edit().putBoolean("crossfade_polling_enabled", crossfadePollingEnabled).apply()
-                            if (crossfadePollingEnabled && activePlayer.isPlaying && crossfadeEnabled) startCrossfadePolling() else stopCrossfadePolling()
+                            if (crossfadePollingEnabled && activePlayer.isPlaying && crossfadeActive) startCrossfadePolling() else stopCrossfadePolling()
                         }
                         "SKIP_TO_NEXT" -> {
                             // Only continue playing if already playing, don't auto-start
@@ -1020,7 +1094,7 @@ val sessionId = activePlayer.audioSessionId
             }
             
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying && crossfadeEnabled) startCrossfadePolling() else stopCrossfadePolling()
+                if (isPlaying && crossfadeActive) startCrossfadePolling() else stopCrossfadePolling()
                 if (isPlaying) startAbCheckLoop() else stopAbCheckLoop()
                 // Ensure app volume is applied when playback starts
                 if (isPlaying) { try { activePlayer.volume = uiToAmp(appVolumeUi) } catch (_: Exception) {} }
@@ -1052,7 +1126,7 @@ val sessionId = activePlayer.audioSessionId
                 // If not using polling or user disabled experimental true crossfade, we still do minimal fade-in
                 val prefs = getSharedPreferences("settings", 0)
                 val exp = prefs.getBoolean("experimental_true_crossfade", true)
-                if (!exp && crossfadeEnabled && crossfadeDurationMs > 0L) {
+                if (!exp && crossfadeActive && crossfadeDurationMs > 0L) {
                     startFadeIn(crossfadeDurationMs)
                 }
                 // Defensive: ensure effects are bound after item transitions as some devices
@@ -1429,7 +1503,27 @@ val sessionId = activePlayer.audioSessionId
     fun getSpectrumAnalyzer(): SpectrumAnalyzer = spectrumAnalyzer
     
     fun getEnhancedAudioSettings(): EnhancedAudioSettings = enhancedAudioSettings
-    
+
+    /**
+     * Applies the parallel wet/dry reverb (see [ParallelReverbAudioProcessor]) to both the
+     * active and spare players in lockstep, so a crossfade's overlap window never has the
+     * two players reverbing differently. Callers should invoke this whenever
+     * `AudioSettings.reverbEnabled` / `reverbWetDryMix` / `reverbPreset` change; it takes
+     * effect immediately without rebuilding either player's pipeline.
+     */
+    fun setParallelReverbSettings(enabled: Boolean, wetDryMixPercent: Float, preset: ReverbRoomPreset) {
+        try {
+            reverbProcessorActive.reverbEnabled = enabled
+            reverbProcessorActive.wetDryMix = wetDryMixPercent
+            reverbProcessorActive.preset = preset
+        } catch (_: Exception) {}
+        try {
+            reverbProcessorSpare.reverbEnabled = enabled
+            reverbProcessorSpare.wetDryMix = wetDryMixPercent
+            reverbProcessorSpare.preset = preset
+        } catch (_: Exception) {}
+    }
+
     /**
      * Load saved settings for professional audio processor
      */
@@ -1520,10 +1614,11 @@ try { activePlayer.setAudioAttributes(audioAttributes, audioFocusEnabled) } catc
     fun setCrossfadeEnabled(enabled: Boolean) {
         crossfadeEnabled = enabled
         try { getSharedPreferences("settings", 0).edit().putBoolean("crossfade_enabled", crossfadeEnabled).apply() } catch (_: Exception) {}
-        // Apply immediately if playback is active
-        if (crossfadeEnabled && activePlayer.isPlaying) {
+        // Apply immediately if playback is active -- gate on crossfadeActive (manual OR smart) so
+        // Smart Crossfade alone keeps polling running even while this manual toggle is off.
+        if (crossfadeActive && activePlayer.isPlaying) {
             startCrossfadePolling()
-        } else {
+        } else if (!crossfadeActive) {
             stopCrossfadePolling()
         }
     }
@@ -1531,6 +1626,22 @@ try { activePlayer.setAudioAttributes(audioAttributes, audioFocusEnabled) } catc
     fun setCrossfadeDuration(durationMs: Long) {
         crossfadeDurationMs = durationMs.coerceIn(0L, 5000L)
         try { getSharedPreferences("settings", 0).edit().putLong("crossfade_duration_ms", crossfadeDurationMs).apply() } catch (_: Exception) {}
+    }
+
+    fun setSmartCrossfadeEnabled(enabled: Boolean) {
+        smartCrossfadeEnabled = enabled
+        try { getSharedPreferences("settings", 0).edit().putBoolean("smart_crossfade_enabled", smartCrossfadeEnabled).apply() } catch (_: Exception) {}
+        // Apply immediately if playback is active -- same crossfadeActive gate as setCrossfadeEnabled above.
+        if (crossfadeActive && activePlayer.isPlaying) {
+            startCrossfadePolling()
+        } else if (!crossfadeActive) {
+            stopCrossfadePolling()
+        }
+    }
+
+    fun setCrossfadeCurve(curve: CrossfadeCurve) {
+        crossfadeCurve = curve
+        try { getSharedPreferences("settings", 0).edit().putString("crossfade_curve", crossfadeCurve.name).apply() } catch (_: Exception) {}
     }
 
     private fun startFadeIn(durationMs: Long) {
@@ -1560,7 +1671,7 @@ try { activePlayer.volume = vol } catch (_: Exception) {}
         if (crossfadeCheckRunnable != null) return
         val prefs = getSharedPreferences("settings", 0)
         val exp = prefs.getBoolean("experimental_true_crossfade", true)
-        if (!crossfadePollingEnabled || !exp || !crossfadeEnabled || crossfadeDurationMs <= 0L) return
+        if (!crossfadePollingEnabled || !exp || !crossfadeActive || crossfadeDurationMs <= 0L) return
         crossfadeCheckRunnable = object : Runnable {
             override fun run() {
                 try {
@@ -1623,14 +1734,74 @@ try { activePlayer.volume = vol } catch (_: Exception) {}
         } catch (_: Exception) { null }
     }
 
+    /**
+     * Volume gain pair `(outgoing, incoming)` for a crossfade at [progress] (`0f..1f`) under
+     * [curve]. Ported directly from Lumisound's `crossfadeGains(atProgress:)`
+     * (`AudioPlayerManager+Crossfade.swift`): equal-power keeps perceived loudness constant
+     * through the whole transition (a quarter-circle cos/sin pair), linear is a straight ramp
+     * (perceived loudness dips slightly midway, since power ~ amplitude^2 and (1-p)+p=1 doesn't
+     * hold for power).
+     */
+    private fun crossfadeGains(progress: Float, curve: CrossfadeCurve): Pair<Float, Float> {
+        val p = progress.coerceIn(0f, 1f)
+        return when (curve) {
+            CrossfadeCurve.LINEAR -> (1f - p) to p
+            CrossfadeCurve.EQUAL_POWER -> {
+                val theta = (p * (Math.PI / 2.0)).toFloat()
+                cos(theta) to sin(theta)
+            }
+        }
+    }
+
+    /**
+     * Ported from Lumisound's `smartFadeDuration(base:bpm:)` (`AudioPlayerManager+Crossfade.swift`),
+     * minus the live spectral-analyzer nudge (out of scope here -- that depends on infrastructure
+     * this change doesn't touch; see the BPM TODO in [startTrueCrossfade]). Snaps [base] (seconds)
+     * to the nearest whole number of beats at [bpm], clamped to within +/-50% of [base] so an
+     * unreliable BPM reading can't blow the crossfade window out. Returns [base] unchanged when
+     * [bpm] is unknown or non-positive.
+     */
+    private fun smartFadeDuration(base: Double, bpm: Double?): Double {
+        if (bpm == null || bpm <= 0.0) return base
+        val beatDuration = 60.0 / bpm
+        if (beatDuration <= 0.0) return base
+        val nearestBeats = Math.round(base / beatDuration).coerceAtLeast(1L)
+        val snapped = nearestBeats * beatDuration
+        val minAllowed = base * 0.5
+        val maxAllowed = base * 1.5
+        return snapped.coerceIn(minAllowed, maxAllowed)
+    }
+
     private fun startTrueCrossfade() {
         // Determine the actual next media item index respecting shuffle and repeat
-        try { android.util.Log.d("MusicService", "startTrueCrossfade: enabled=$crossfadeEnabled dur=${crossfadeDurationMs}ms") } catch (_: Exception) {}
+        try { android.util.Log.d("MusicService", "startTrueCrossfade: enabled=$crossfadeEnabled smart=$smartCrossfadeEnabled dur=${crossfadeDurationMs}ms curve=$crossfadeCurve") } catch (_: Exception) {}
         val nextIndex = try { activePlayer.nextMediaItemIndex } catch (_: Exception) { C.INDEX_UNSET }
         if (nextIndex == C.INDEX_UNSET || nextIndex >= activePlayer.mediaItemCount) return
         val nextItem = try { activePlayer.getMediaItemAt(nextIndex) } catch (_: Exception) { null } ?: return
         val spare = sparePlayer ?: return
         isCrossfading = true
+
+        // --- Smart Crossfade: BPM data source -----------------------------------------------
+        // TODO(bpm-analysis): there is currently no reliable *per-track* BPM source wired into
+        // MusicService. IntelligentAutoEQ.detectedTempo (see EnhancedAudioManager) is a *live*
+        // running estimate derived from real-time PCM analysis of whatever is *currently*
+        // audible -- and MusicService.onMediaItemTransition explicitly feeds it `tempo = null`
+        // today because there is no PCM tap wired into this player stack yet. Even if there were,
+        // a live estimate of the *outgoing* track can't tell us the *incoming* track's BPM before
+        // that track has started playing/being analyzed. Until a real per-track BPM analyzer
+        // lands (out of scope here -- that's a separate, larger task), both BPMs below stay
+        // `null`, so `smartFadeDuration` returns `crossfadeDurationMs` unchanged and the
+        // beatmatch rate-nudge block further down never activates (both ratios implicitly stay
+        // at 1.0). This keeps Smart Crossfade a safe no-op superset of the plain curve-based
+        // crossfade rather than blocking on BPM analysis existing.
+        val outgoingBpm: Double? = null
+        val incomingBpm: Double? = null
+        val effectiveDurationMs = if (smartCrossfadeEnabled) {
+            (smartFadeDuration(crossfadeDurationMs / 1000.0, outgoingBpm) * 1000.0).toLong().coerceAtLeast(1L)
+        } else {
+            crossfadeDurationMs
+        }
+
         try {
             spare.stop()
             spare.clearMediaItems()
@@ -1638,6 +1809,10 @@ try { activePlayer.volume = vol } catch (_: Exception) {}
             spare.setAudioAttributes(audioAttributes, audioFocusEnabled)
             spare.setHandleAudioBecomingNoisy(true)
             spare.setMediaItem(nextItem)
+            // Baseline playback params to the user's current speed/pitch settings before any
+            // beatmatch nudge below is applied (previously left at ExoPlayer's un-set 1.0/1.0
+            // defaults here, which would mismatch an active speed/pitch override during a fade).
+            spare.playbackParameters = PlaybackParameters(currentSpeed, currentPitch)
             spare.prepare()
             spare.play()
         } catch (_: Exception) {
@@ -1647,19 +1822,58 @@ try { activePlayer.volume = vol } catch (_: Exception) {}
         // Apply enhancement flags to spare as well
         try { spare.setSkipSilenceEnabled(skipSilenceEnabled) } catch (_: Exception) {}
         try { spare.setPauseAtEndOfMediaItems(false) } catch (_: Exception) {}
+
+        // --- Smart Crossfade: true beatmatching --------------------------------------------
+        // Ported from Lumisound's AudioPlayerManager+Crossfade.swift: nudge both tracks' tempo
+        // toward their BPM midpoint for the overlap, then ease the incoming track back to native
+        // tempo (rate 1.0) as the fade completes. Gated on both BPMs being known -- per the TODO
+        // above this never activates today (outgoingBpm/incomingBpm are always null), so this is
+        // dead code path until real BPM analysis lands, kept correct/ready for that follow-up.
+        //
+        // Media3/ExoPlayer note vs. iOS: iOS applies this via a dedicated AVAudioUnitTimePitch
+        // per node (independent rate + pitch). Media3's PlaybackParameters(speed, pitch) is
+        // likewise a Sonic-based time-stretcher with an *independent* pitch control -- this is
+        // the same mechanism that already powers this file's own playback-speed feature
+        // (currentSpeed/currentPitch), where changing speed does not chipmunk the pitch. So we
+        // multiply the beatmatch ratio into `speed` while leaving `pitch` at the user's current
+        // setting (currentPitch), which yields a genuine pitch-preserving tempo nudge here too --
+        // no lossy speed/pitch-linked tradeoff needed for this small (<=8%) rate nudge.
+        var outgoingRateRatio = 1.0f
+        var incomingRateRatio = 1.0f
+        if (smartCrossfadeEnabled && outgoingBpm != null && incomingBpm != null && outgoingBpm > 0.0 && incomingBpm > 0.0) {
+            val targetBpm = (outgoingBpm + incomingBpm) / 2.0
+            val oRatio = (targetBpm / outgoingBpm).toFloat()
+            val iRatio = (targetBpm / incomingBpm).toFloat()
+            if (oRatio in 0.92f..1.08f && iRatio in 0.92f..1.08f) {
+                outgoingRateRatio = oRatio
+                incomingRateRatio = iRatio
+                try { activePlayer.playbackParameters = PlaybackParameters(currentSpeed * outgoingRateRatio, currentPitch) } catch (_: Exception) {}
+                try { spare.playbackParameters = PlaybackParameters(currentSpeed * incomingRateRatio, currentPitch) } catch (_: Exception) {}
+            }
+            // else: adjustment too large (>8%) -- skip beatmatching for this transition, both stay at native tempo
+        }
+        val beatmatchActive = incomingRateRatio != 1.0f
+
         val startTime = System.currentTimeMillis()
         val baseAmp = uiToAmp(appVolumeUi)
         val fromVol = baseAmp
         val toVol = baseAmp
+        val curve = crossfadeCurve
         fadeRunnable?.let { mainHandler.removeCallbacks(it) }
         val runnable = object : Runnable {
             override fun run() {
                 val elapsed = System.currentTimeMillis() - startTime
-                val fraction = (elapsed.toFloat() / crossfadeDurationMs.toFloat()).coerceIn(0f, 1f)
-                val oldVol = fromVol * (1f - fraction)
-                val newVol = toVol * (fraction)
+                val fraction = (elapsed.toFloat() / effectiveDurationMs.toFloat()).coerceIn(0f, 1f)
+                val (outGain, inGain) = crossfadeGains(fraction, curve)
+                val oldVol = fromVol * outGain
+                val newVol = toVol * inGain
                 try { activePlayer.volume = oldVol } catch (_: Exception) {}
                 try { spare.volume = newVol } catch (_: Exception) {}
+                if (beatmatchActive) {
+                    // Ease the incoming track's rate back toward native tempo (1.0) as the fade completes
+                    val curIncomingRatio = incomingRateRatio + (1.0f - incomingRateRatio) * fraction
+                    try { spare.playbackParameters = PlaybackParameters(currentSpeed * curIncomingRatio, currentPitch) } catch (_: Exception) {}
+                }
                 if (fraction < 1f) {
                     mainHandler.postDelayed(this, 16L)
                 } else {
@@ -1677,6 +1891,8 @@ try { activePlayer.volume = vol } catch (_: Exception) {}
                     } catch (e: Exception) {
                         android.util.Log.e("MusicService", "crossfade swap setPlayer failed", e)
                     }
+                    // Restore the outgoing player's playback rate to normal before it becomes the new spare
+                    try { activePlayer.playbackParameters = PlaybackParameters(currentSpeed, currentPitch) } catch (_: Exception) {}
                     try { activePlayer.pause() } catch (_: Exception) {}
                     try { activePlayer.seekToDefaultPosition(nextIndex) } catch (_: Exception) {}
                     try { activePlayer.stop() } catch (_: Exception) {}
@@ -1684,6 +1900,8 @@ try { activePlayer.volume = vol } catch (_: Exception) {}
                     val old = activePlayer
                     activePlayer = spare
                     sparePlayer = old
+                    // Guard against float drift: land the new active player exactly at native tempo
+                    try { activePlayer.playbackParameters = PlaybackParameters(currentSpeed, currentPitch) } catch (_: Exception) {}
                     try { sparePlayer?.clearMediaItems() } catch (_: Exception) {}
                     try { sparePlayer?.volume = 0f } catch (_: Exception) {}
                     isCrossfading = false
@@ -1878,6 +2096,11 @@ try { activePlayer.pause() } catch (_: Exception) {}
                 "audio_focus_enabled" -> setAudioFocusEnabled(prefs.getBoolean("audio_focus_enabled", true))
                 "crossfade_enabled" -> setCrossfadeEnabled(prefs.getBoolean("crossfade_enabled", false))
                 "crossfade_duration_ms" -> setCrossfadeDuration(prefs.getLong("crossfade_duration_ms", 1000L))
+                "smart_crossfade_enabled" -> setSmartCrossfadeEnabled(prefs.getBoolean("smart_crossfade_enabled", false))
+                "crossfade_curve" -> {
+                    val name = prefs.getString("crossfade_curve", CrossfadeCurve.EQUAL_POWER.name) ?: CrossfadeCurve.EQUAL_POWER.name
+                    try { setCrossfadeCurve(CrossfadeCurve.valueOf(name)) } catch (_: Exception) {}
+                }
                 "skip_silence_enabled" -> {
                     skipSilenceEnabled = prefs.getBoolean("skip_silence_enabled", false)
                     try { activePlayer.setSkipSilenceEnabled(skipSilenceEnabled) } catch (_: Exception) {}
@@ -1901,11 +2124,11 @@ try { activePlayer.pause() } catch (_: Exception) {}
                 "reverb_preset" -> setReverbPreset(prefs.getInt("reverb_preset", 0).toShort())
                 "experimental_true_crossfade" -> {
                     val enabled = prefs.getBoolean("experimental_true_crossfade", true)
-                    if (enabled && activePlayer.isPlaying && crossfadeEnabled) startCrossfadePolling() else stopCrossfadePolling()
+                    if (enabled && activePlayer.isPlaying && crossfadeActive) startCrossfadePolling() else stopCrossfadePolling()
                 }
                 "crossfade_polling_enabled" -> {
                     crossfadePollingEnabled = prefs.getBoolean("crossfade_polling_enabled", true)
-                    if (crossfadePollingEnabled && activePlayer.isPlaying && crossfadeEnabled) startCrossfadePolling() else stopCrossfadePolling()
+                    if (crossfadePollingEnabled && activePlayer.isPlaying && crossfadeActive) startCrossfadePolling() else stopCrossfadePolling()
                 }
                 "playback_speed" -> setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.25f, 2.5f))
                 "pitch_semitones" -> {
