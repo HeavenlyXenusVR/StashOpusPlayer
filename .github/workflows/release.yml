@@ -31,8 +31,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: true
+        # lfs intentionally not enabled -- see build.yml for why.
 
       - name: Setup JDK
         uses: actions/setup-java@v4

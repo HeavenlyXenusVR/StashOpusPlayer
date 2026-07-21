@@ -20,8 +20,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: true
+        # Note: lfs is intentionally NOT enabled here. Some objects tracked by
+        # Git LFS in this repo's history (docs/ screenshots, the placeholder
+        # keystore) were never actually uploaded to GitHub's LFS store and
+        # 404 on fetch, which would fail the whole checkout. None of the
+        # build-critical assets (icons, gradle wrapper jar) go through LFS
+        # anymore — see .gitattributes.
 
       - name: Setup JDK
         uses: actions/setup-java@v4
