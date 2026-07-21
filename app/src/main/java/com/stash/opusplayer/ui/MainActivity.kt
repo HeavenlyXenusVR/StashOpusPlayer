@@ -740,7 +740,7 @@ Check for updates anytime from Settings.""")
     }
     
     private fun setupMusicPlayer() {
-        musicPlayerManager = (application as com.stash.opusplayer.StashWaveApplication).playerManager
+        musicPlayerManager = (application as com.stash.opusplayer.StashOpusApplication).playerManager
     }
     
     private var playingBannerDismissRunnable: Runnable? = null

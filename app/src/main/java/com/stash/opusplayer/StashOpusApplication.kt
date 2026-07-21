@@ -2,7 +2,7 @@ package com.stash.opusplayer
 
 import android.app.Application
 
-class StashWaveApplication : Application() {
+class StashOpusApplication : Application() {
     
     // Shared player manager for the whole app
     val playerManager: com.stash.opusplayer.player.MusicPlayerManager by lazy {
@@ -37,7 +37,7 @@ class StashWaveApplication : Application() {
     }
     
     companion object {
-        lateinit var instance: StashWaveApplication
+        lateinit var instance: StashOpusApplication
             private set
     }
 }

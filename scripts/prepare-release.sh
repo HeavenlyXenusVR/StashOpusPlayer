@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Stash Audio Player - Release Preparation Script
+# StashOpusPlayer - Release Preparation Script
 # This script prepares the app for production release
 
 set -e  # Exit on error
@@ -20,7 +20,7 @@ KEYSTORE_PASSWORD=""
 KEY_ALIAS=""
 KEY_PASSWORD=""
 
-echo -e "${BLUE}🚀 Stash Audio Player - Release Preparation${NC}"
+echo -e "${BLUE}🚀 StashOpusPlayer - Release Preparation${NC}"
 echo "================================"
 
 # Function to print colored messages
@@ -203,7 +203,7 @@ generate_build_report() {
     REPORT_FILE="$PROJECT_ROOT/build-report-$(date +%Y%m%d-%H%M%S).txt"
     
     cat > "$REPORT_FILE" << EOF
-Stash Audio Player - Build Report
+StashOpusPlayer - Build Report
 Generated: $(date)
 ==================================
 

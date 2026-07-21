@@ -869,7 +869,7 @@ else -> com.stash.opusplayer.utils.TagEditor.embedArtworkAny(this@NowPlayingActi
     }
     
     private fun setupPlayerManager() {
-        musicPlayerManager = (application as com.stash.opusplayer.StashWaveApplication).playerManager
+        musicPlayerManager = (application as com.stash.opusplayer.StashOpusApplication).playerManager
         
         // Observe player state changes (shared manager)
         lifecycleScope.launch {
@@ -1534,7 +1534,7 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
     }
     
     private fun showQueueDialog() {
-        val mgr = (application as? com.stash.opusplayer.StashWaveApplication)?.playerManager
+        val mgr = (application as? com.stash.opusplayer.StashOpusApplication)?.playerManager
         val list = mgr?.playlist?.value ?: emptyList()
         if (list.isEmpty()) {
             showVisualFeedback("Queue is empty")
