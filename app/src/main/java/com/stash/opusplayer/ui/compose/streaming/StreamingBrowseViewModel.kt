@@ -34,7 +34,7 @@ enum class StreamingBrowseTab { SEARCH, LIBRARY }
  * suggestions). The "library" half of this screen is therefore just the
  * user's synced playlists/favorites from [SyncApi] (`/user/playlists`,
  * `/user/favorites`) — not a personal cloud storage browser, since no
- * `/user/music/*` API exists to browse.
+ * `/user/music/…` API exists to browse.
  */
 data class StreamingBrowseUiState(
     // --- Bridge configuration gate ---
