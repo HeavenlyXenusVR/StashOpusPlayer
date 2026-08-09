@@ -117,8 +117,18 @@ android {
     buildFeatures {
         viewBinding true
         buildConfig true
+        compose true
     }
-    
+
+    // Compose Compiler <-> Kotlin version pin: this project is on Kotlin 1.9.10
+    // (see buildscript above), which requires EXACTLY Compose Compiler 1.5.3 per
+    // Google's compatibility map (https://developer.android.com/jetpack/androidx/releases/compose-kotlin) --
+    // any other compiler version fails the build outright, it isn't a "pick a
+    // recent one" situation.
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.3'
+    }
+
     lint {
         abortOnError false
         checkReleaseBuilds false
@@ -198,6 +208,20 @@ dependencies {
     // of this library (androidx.security:security-crypto has not shipped a
     // non-alpha version) and is what production apps use in practice.
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+
+    // Jetpack Compose (new screens only -- Library/Now Playing/Settings fragments
+    // stay View/XML for now, migrated incrementally in later work). BOM version
+    // must stay compatible with the pinned Compose Compiler 1.5.3 above.
+    implementation platform('androidx.compose:compose-bom:2023.10.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
+    // hiltViewModel() for Compose screens
+    implementation 'androidx.hilt:hilt-navigation-compose:1.1.0'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
 
     // YouTube Data API and video downloading
     implementation 'com.google.apis:google-api-services-youtube:v3-rev20220719-2.0.0'
