@@ -419,6 +419,7 @@ val savedShuffle = prefs.getBoolean("playback_shuffle", false)
                         "SET_EQ_ENABLED",
                         "SET_EQ_PRESET",
                         "SET_EQ_BAND",
+                        "SET_LUA_EFFECT",
                         "GET_EQ_STATE",
                         "SET_BASS_BOOST",
                         "SET_VIRTUALIZER",
@@ -502,6 +503,20 @@ equalizerManager.setPreset(com.stash.opusplayer.audio.EqualizerPreset.valueOf(na
                                     .putBoolean("equalizer_enabled", true)
                                     .apply()
                             } catch (_: Exception) {}
+                        }
+                        "SET_LUA_EFFECT" -> {
+                            val eqBands = args.getFloatArray("eq_bands")
+                            val eqEnabled = args.getBoolean("eq_enabled", true)
+                            if (eqBands != null) {
+                                equalizerManager.applyLuaEffect(eqBands.toList(), eqEnabled)
+                                equalizerManager.setEnabled(true)
+                                PreferenceManager.getDefaultSharedPreferences(this@MusicService).edit()
+                                    .putBoolean("equalizer_enabled", true)
+                                    .apply()
+                                getSharedPreferences("settings", 0).edit()
+                                    .putBoolean("equalizer_enabled", true)
+                                    .apply()
+                            }
                         }
                         "GET_EQ_STATE" -> {
                             return com.google.common.util.concurrent.Futures.immediateFuture(
