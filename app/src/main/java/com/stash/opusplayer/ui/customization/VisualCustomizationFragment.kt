@@ -14,6 +14,8 @@ import androidx.lifecycle.lifecycleScope
 import com.stash.opusplayer.ui.appearance.AppearancePreferences
 import com.stash.opusplayer.ui.appearance.ThemeManager
 import com.stash.opusplayer.ui.appearance.VisualCustomizationManager
+import com.stash.opusplayer.ui.appearance.lua.LuaPreset
+import com.stash.opusplayer.ui.appearance.lua.LuaThemeEngine
 import com.stash.opusplayer.ui.fragments.settings.NavigableSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.addActionButton
 import com.stash.opusplayer.ui.fragments.settings.addBodyText
@@ -74,6 +76,7 @@ class VisualCustomizationFragment : NavigableSettingsFragment() {
         )
 
         buildCurrentState(content)
+        buildLuaPresetsSection(content)
         buildAnimationSection(content)
         buildBackgroundSection(content)
         buildPhotoSection(content)
@@ -81,6 +84,39 @@ class VisualCustomizationFragment : NavigableSettingsFragment() {
         syncUiFromState()
 
         return scrollView
+    }
+
+    /**
+     * Applies one of the bundled `.lua` theme presets (see
+     * [LuaThemeEngine]/[LuaPreset]) — each script sets colors, typography,
+     * shadows/corner-radius, background, animation speed, mini player, and
+     * (where relevant) SynthWave visualizer colors in one shot. This is the
+     * first UI surface for the Lua theming engine ported from Lumisound; it
+     * intentionally replaces the old hardcoded `AppearancePresets` entry
+     * point rather than living alongside it, since that one was never
+     * wired into any screen in the first place.
+     */
+    private fun buildLuaPresetsSection(parent: LinearLayout) {
+        val section = addSettingsSection(
+            parent,
+            "Lua Presets",
+            "Script-driven looks — each preset sets colors, motion, mini player, and SynthWave visualizer tuning together."
+        )
+
+        addChipButtonRow(
+            section,
+            LuaPreset.entries.map { preset ->
+                preset.displayName to {
+                    val applied = LuaThemeEngine.apply(requireContext(), preset)
+                    if (applied != null) {
+                        syncUiFromState()
+                        Toast.makeText(requireContext(), "${preset.displayName} applied.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Couldn't load the ${preset.displayName} preset script.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
     }
 
     private fun buildCurrentState(parent: LinearLayout) {
