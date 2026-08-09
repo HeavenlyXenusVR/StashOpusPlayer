@@ -162,6 +162,10 @@ play {
 }
 
 dependencies {
+    // Lua scripting engine (theme presets, ported from Lumisound's LuaSwift-based
+    // engine — see ui/appearance/lua/LuaThemeEngine.kt). Pure-Java implementation,
+    // no NDK/native component, so it runs on Android exactly as-is.
+    implementation 'org.luaj:luaj-jse:3.0.1'
     // Glide transformations for blurred backdrops, etc.
     implementation 'jp.wasabeef:glide-transformations:4.3.0'
     // MP3 tag editing (used for embedding artwork into MP3 files)
