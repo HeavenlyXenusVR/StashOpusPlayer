@@ -56,7 +56,7 @@ object LuaUserScriptLibrary {
     private fun userDirectory(context: Context, subdirectory: String): File =
         File(context.filesDir, subdirectory).apply { mkdirs() }
 
-    /** Bundled example scripts under `assets/<subdirectory>/*.lua`. */
+    /** Bundled example scripts under `assets/<subdirectory>/…lua`. */
     fun bundledScripts(context: Context, subdirectory: String): List<ScriptRef> {
         val names = try {
             context.assets.list(subdirectory)?.filter { it.endsWith(".lua") }
