@@ -12,6 +12,8 @@ import com.stash.opusplayer.data.database.PlaylistDao
 import com.stash.opusplayer.data.database.PlaylistEntity
 import com.stash.opusplayer.data.database.PlaylistTrackEntity
 import com.stash.opusplayer.data.database.PlaylistWithCount
+import com.stash.opusplayer.data.database.SmartPlaylistDao
+import com.stash.opusplayer.data.database.SmartPlaylistEntity
 import com.stash.opusplayer.data.database.SongDao
 import com.stash.opusplayer.data.database.toEntity
 import com.stash.opusplayer.data.database.toSong
@@ -31,6 +33,7 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
     private val playlistDao: PlaylistDao = database.playlistDao()
     val metadataDao = database.metadataDao()
     private val songDao: SongDao = database.songDao()
+    private val smartPlaylistDao: SmartPlaylistDao = database.smartPlaylistDao()
     private val metadataExtractor = MetadataExtractor(context)
     private val prefs: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
     
@@ -46,6 +49,20 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
     }
 
     fun getPlaylistTracks(playlistId: Long): Flow<List<PlaylistTrackEntity>> = playlistDao.getTracks(playlistId)
+
+    // Smart Playlists API (Lua-scripted -- see com.stash.opusplayer.lua.LuaSmartPlaylistEngine).
+    // Unlike a regular playlist, a smart playlist stores only its rule script;
+    // its membership is computed on demand from the current song index rather
+    // than a persisted track list.
+    fun getSmartPlaylists(): Flow<List<SmartPlaylistEntity>> = smartPlaylistDao.getAll()
+
+    suspend fun createSmartPlaylist(name: String, luaScript: String): Long = withContext(Dispatchers.IO) {
+        smartPlaylistDao.insert(SmartPlaylistEntity(name = name, luaScript = luaScript))
+    }
+
+    suspend fun deleteSmartPlaylist(id: Long) = withContext(Dispatchers.IO) {
+        smartPlaylistDao.deleteById(id)
+    }
 
     suspend fun addSongToPlaylist(playlistId: Long, song: Song) = withContext(Dispatchers.IO) {
         val track = PlaylistTrackEntity(

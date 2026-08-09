@@ -10,8 +10,8 @@ import com.stash.opusplayer.data.MetadataInfo
 import com.stash.opusplayer.data.MetadataDao
 
 @Database(
-    entities = [FavoriteEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, MetadataInfo::class, SongEntity::class],
-    version = 4,
+    entities = [FavoriteEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, MetadataInfo::class, SongEntity::class, SmartPlaylistEntity::class],
+    version = 5,
     exportSchema = false
 )
 abstract class MusicDatabase : RoomDatabase() {
@@ -20,6 +20,7 @@ abstract class MusicDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun metadataDao(): MetadataDao
     abstract fun songDao(): SongDao
+    abstract fun smartPlaylistDao(): SmartPlaylistDao
 
     companion object {
         @Volatile
@@ -61,13 +62,31 @@ abstract class MusicDatabase : RoomDatabase() {
             }
         }
 
+        // Adds the "smart_playlists" table (see SmartPlaylistEntity) -- brand
+        // new table backing the Lua-scripted smart playlist feature, same
+        // "no data transformation needed" shape as MIGRATION_3_4.
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `smart_playlists` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `luaScript` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): MusicDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     MusicDatabase::class.java,
                     "music_database"
-                ).addMigrations(MIGRATION_3_4)
+                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                  .fallbackToDestructiveMigration()
                  .build()
                 INSTANCE = instance

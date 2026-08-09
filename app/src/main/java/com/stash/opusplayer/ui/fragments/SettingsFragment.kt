@@ -16,6 +16,7 @@ import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
+import com.stash.opusplayer.ui.fragments.settings.SmartPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.addActionButton
 import com.stash.opusplayer.ui.fragments.settings.addBodyText
@@ -119,6 +120,14 @@ class SettingsFragment : Fragment() {
             summary = "Folder access, default layouts, artwork cleanup, and scan scheduling."
         ) {
             openSettingsScreen(LibrarySettingsFragment(), "Library Settings")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Smart Playlists",
+            summary = "Lua-scripted rules that decide playlist membership from the current library."
+        ) {
+            openSettingsScreen(SmartPlaylistsFragment(), "Smart Playlists")
         }
 
         addSettingsTile(

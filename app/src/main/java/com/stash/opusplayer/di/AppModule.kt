@@ -5,6 +5,7 @@ import com.stash.opusplayer.data.MetadataDao
 import com.stash.opusplayer.data.database.FavoriteDao
 import com.stash.opusplayer.data.database.MusicDatabase
 import com.stash.opusplayer.data.database.PlaylistDao
+import com.stash.opusplayer.data.database.SmartPlaylistDao
 import com.stash.opusplayer.data.database.SongDao
 import dagger.Module
 import dagger.Provides
@@ -38,4 +39,7 @@ object AppModule {
 
     @Provides
     fun provideSongDao(database: MusicDatabase): SongDao = database.songDao()
+
+    @Provides
+    fun provideSmartPlaylistDao(database: MusicDatabase): SmartPlaylistDao = database.smartPlaylistDao()
 }
