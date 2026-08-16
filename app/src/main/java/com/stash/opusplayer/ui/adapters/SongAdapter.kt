@@ -26,6 +26,7 @@ class SongAdapter(
     private val onPlayNext: (Song) -> Unit = {},
     private val onAddToQueue: (Song) -> Unit = {},
     private val onShowFeedback: (String) -> Unit = {},
+    private val onMoveToTrash: (Song) -> Unit = {},
     private val metadataExtractor: MetadataExtractor? = null
 ) : ListAdapter<Song, RecyclerView.ViewHolder>(SongDiffCallback()) {
 
@@ -370,6 +371,10 @@ class SongAdapter(
                 }
                 R.id.action_add_to_queue -> {
                     onAddToQueue(song)
+                    true
+                }
+                R.id.action_move_to_trash -> {
+                    onMoveToTrash(song)
                     true
                 }
                 else -> false

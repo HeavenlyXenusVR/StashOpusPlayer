@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.ActionBarDrawerToggle
@@ -79,7 +80,28 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     ) { uri ->
         uri?.let { setBackgroundImage(it) }
     }
-    
+
+    private var pendingMediaDeleteCallback: ((Boolean) -> Unit)? = null
+    private var pendingMediaDeleteUri: Uri? = null
+
+    private val mediaDeleteLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForRequest()
+    ) { result ->
+        val callback = pendingMediaDeleteCallback
+        val uri = pendingMediaDeleteUri
+        pendingMediaDeleteCallback = null
+        pendingMediaDeleteUri = null
+        val granted = result.resultCode == android.app.Activity.RESULT_OK
+        if (granted && uri != null && Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            // API 29's consent dialog only grants permission -- the delete call itself has to
+            // be reissued now that it will actually succeed instead of throwing again.
+            val rows = runCatching { contentResolver.delete(uri, null, null) }.getOrDefault(0)
+            callback?.invoke(rows > 0)
+        } else {
+            callback?.invoke(granted)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Start performance tracking
         UIPerformanceOptimizer.startPerformanceTracking("MainActivity.onCreate")
@@ -920,7 +942,80 @@ val repository = com.stash.opusplayer.data.MusicRepository(this@MainActivity)
             }
         }
     }
-    
+
+    /**
+     * Requests deletion of a MediaStore-backed audio file through the correct
+     * scoped-storage flow for the running API level: a direct
+     * `ContentResolver.delete` on API < 29 (legacy storage), a
+     * `RecoverableSecurityException` catch-and-retry on API 29, and
+     * `MediaStore.createDeleteRequest`'s system confirmation dialog on API 30+.
+     * [onResult] always fires exactly once.
+     */
+    fun requestMediaDelete(uri: Uri, onResult: (Boolean) -> Unit) {
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(uri))
+                pendingMediaDeleteCallback = onResult
+                mediaDeleteLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+            }
+            Build.VERSION.SDK_INT == Build.VERSION_CODES.Q -> {
+                try {
+                    val rows = contentResolver.delete(uri, null, null)
+                    onResult(rows > 0)
+                } catch (e: android.app.RecoverableSecurityException) {
+                    pendingMediaDeleteCallback = onResult
+                    pendingMediaDeleteUri = uri
+                    mediaDeleteLauncher.launch(IntentSenderRequest.Builder(e.userAction.actionIntent.intentSender).build())
+                } catch (e: Exception) {
+                    onResult(false)
+                }
+            }
+            else -> {
+                val rows = runCatching { contentResolver.delete(uri, null, null) }.getOrDefault(0)
+                onResult(rows > 0)
+            }
+        }
+    }
+
+    /**
+     * Moves [song] into the in-app Recently Deleted trash: copies its bytes into
+     * app-private storage first, then only removes the original (and the song
+     * index row) once the system's own delete confirmation actually succeeds --
+     * a copy is never staged as "deleted" while the real file is still sitting
+     * in the user's library. See [com.stash.opusplayer.library.RecentlyDeletedService].
+     */
+    fun trashSong(song: com.stash.opusplayer.data.Song, onDone: (Boolean) -> Unit = {}) {
+        lifecycleScope.launch {
+            val db = com.stash.opusplayer.data.database.MusicDatabase.getDatabase(this@MainActivity)
+            val entity = db.songDao().getSongById(song.id)
+            if (entity == null) {
+                onDone(false)
+                return@launch
+            }
+            val trashFile = com.stash.opusplayer.library.RecentlyDeletedService.copyToTrash(this@MainActivity, entity)
+            if (trashFile == null) {
+                Toast.makeText(this@MainActivity, "Couldn't move \"${song.displayName}\" to trash.", Toast.LENGTH_SHORT).show()
+                onDone(false)
+                return@launch
+            }
+            val uri = com.stash.opusplayer.library.AudioFileValidator.contentUriFor(entity)
+            requestMediaDelete(uri) { deleted ->
+                lifecycleScope.launch {
+                    if (deleted) {
+                        com.stash.opusplayer.library.RecentlyDeletedService.finalize(
+                            this@MainActivity, entity, trashFile, db.recentlyDeletedDao(), db.songDao()
+                        )
+                        Toast.makeText(this@MainActivity, "\"${song.displayName}\" moved to trash.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        com.stash.opusplayer.library.RecentlyDeletedService.discard(trashFile)
+                        Toast.makeText(this@MainActivity, "Delete was cancelled.", Toast.LENGTH_SHORT).show()
+                    }
+                    onDone(deleted)
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         if (::miniPlayerView.isInitialized) {

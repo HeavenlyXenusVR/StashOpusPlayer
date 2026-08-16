@@ -14,6 +14,7 @@ import com.stash.opusplayer.R
 import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
+import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.SmartPlaylistsFragment
@@ -120,6 +121,14 @@ class SettingsFragment : Fragment() {
             summary = "Folder access, default layouts, artwork cleanup, and scan scheduling."
         ) {
             openSettingsScreen(LibrarySettingsFragment(), "Library Settings")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Library Maintenance",
+            summary = "Find and delete corrupt audio files, and restore anything recently moved to trash."
+        ) {
+            openSettingsScreen(LibraryMaintenanceFragment(), "Library Maintenance")
         }
 
         addSettingsTile(
