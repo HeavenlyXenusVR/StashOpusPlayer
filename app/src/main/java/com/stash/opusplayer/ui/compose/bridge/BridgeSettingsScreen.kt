@@ -59,6 +59,11 @@ fun BridgeSettingsScreen(
         onLogin = viewModel::login,
         onRegister = viewModel::register,
         onLogout = viewModel::logout,
+        onTwoFactorCodeChanged = viewModel::onTwoFactorCodeChanged,
+        onCompleteTwoFactorLogin = viewModel::completeTwoFactorLogin,
+        onCancelTwoFactorLogin = viewModel::cancelTwoFactorLogin,
+        onDisplayNameChanged = viewModel::onDisplayNameChanged,
+        onSaveDisplayName = viewModel::saveDisplayName,
         modifier = modifier
     )
 }
@@ -78,6 +83,11 @@ private fun BridgeSettingsContent(
     onLogin: () -> Unit,
     onRegister: () -> Unit,
     onLogout: () -> Unit,
+    onTwoFactorCodeChanged: (String) -> Unit,
+    onCompleteTwoFactorLogin: () -> Unit,
+    onCancelTwoFactorLogin: () -> Unit,
+    onDisplayNameChanged: (String) -> Unit,
+    onSaveDisplayName: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -112,7 +122,12 @@ private fun BridgeSettingsContent(
             onRegisterEmailChanged = onRegisterEmailChanged,
             onLogin = onLogin,
             onRegister = onRegister,
-            onLogout = onLogout
+            onLogout = onLogout,
+            onTwoFactorCodeChanged = onTwoFactorCodeChanged,
+            onCompleteTwoFactorLogin = onCompleteTwoFactorLogin,
+            onCancelTwoFactorLogin = onCancelTwoFactorLogin,
+            onDisplayNameChanged = onDisplayNameChanged,
+            onSaveDisplayName = onSaveDisplayName
         )
     }
 }
@@ -222,7 +237,12 @@ private fun AccountSection(
     onRegisterEmailChanged: (String) -> Unit,
     onLogin: () -> Unit,
     onRegister: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onTwoFactorCodeChanged: (String) -> Unit,
+    onCompleteTwoFactorLogin: () -> Unit,
+    onCancelTwoFactorLogin: () -> Unit,
+    onDisplayNameChanged: (String) -> Unit,
+    onSaveDisplayName: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -231,14 +251,25 @@ private fun AccountSection(
         ) {
             Text(text = "Account", style = MaterialTheme.typography.titleMedium)
 
-            if (state.isLoggedIn) {
-                LoggedInContent(
+            when {
+                state.isTwoFactorPending -> TwoFactorForm(
+                    code = state.twoFactorCode,
+                    isLoading = state.isAuthLoading,
+                    onCodeChanged = onTwoFactorCodeChanged,
+                    onSubmit = onCompleteTwoFactorLogin,
+                    onCancel = onCancelTwoFactorLogin
+                )
+                state.isLoggedIn -> LoggedInContent(
                     username = state.username,
                     isLoggingOut = state.isLoggingOut,
+                    displayNameInput = state.displayNameInput,
+                    isSavingDisplayName = state.isSavingDisplayName,
+                    displayNameJustSaved = state.displayNameJustSaved,
+                    onDisplayNameChanged = onDisplayNameChanged,
+                    onSaveDisplayName = onSaveDisplayName,
                     onLogout = onLogout
                 )
-            } else {
-                LoggedOutContent(
+                else -> LoggedOutContent(
                     state = state,
                     onAuthModeChanged = onAuthModeChanged,
                     onLoginUsernameChanged = onLoginUsernameChanged,
@@ -273,30 +304,120 @@ private fun AccountSection(
 private fun LoggedInContent(
     username: String?,
     isLoggingOut: Boolean,
+    displayNameInput: String,
+    isSavingDisplayName: Boolean,
+    displayNameJustSaved: Boolean,
+    onDisplayNameChanged: (String) -> Unit,
+    onSaveDisplayName: () -> Unit,
     onLogout: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(
-                text = "Signed in as",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(text = username ?: "Unknown", style = MaterialTheme.typography.bodyLarge)
-        }
-        Button(onClick = onLogout, enabled = !isLoggingOut) {
-            if (isLoggingOut) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Signed in as",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else {
-                Text("Log Out")
+                Text(text = username ?: "Unknown", style = MaterialTheme.typography.bodyLarge)
+            }
+            Button(onClick = onLogout, enabled = !isLoggingOut) {
+                if (isLoggingOut) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Log Out")
+                }
+            }
+        }
+
+        Divider()
+
+        Text(text = "Display Name", style = MaterialTheme.typography.labelLarge)
+        OutlinedTextField(
+            value = displayNameInput,
+            onValueChange = onDisplayNameChanged,
+            label = { Text("Shown to friends instead of your username") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (displayNameJustSaved && !isSavingDisplayName) {
+                Text(
+                    text = "Saved",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 12.dp)
+                )
+            }
+            Button(onClick = onSaveDisplayName, enabled = !isSavingDisplayName) {
+                if (isSavingDisplayName) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Save")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TwoFactorForm(
+    code: String,
+    isLoading: Boolean,
+    onCodeChanged: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "This account has two-factor authentication enabled.",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        OutlinedTextField(
+            value = code,
+            onValueChange = onCodeChanged,
+            label = { Text("6-digit code") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TextButton(onClick = onCancel, enabled = !isLoading) {
+                Text("Cancel")
+            }
+            Button(
+                onClick = onSubmit,
+                enabled = !isLoading && code.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Verify")
+                }
             }
         }
     }

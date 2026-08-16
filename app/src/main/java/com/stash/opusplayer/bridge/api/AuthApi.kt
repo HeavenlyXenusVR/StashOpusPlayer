@@ -7,6 +7,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 
 // --- Request bodies ---------------------------------------------------------
@@ -24,6 +25,18 @@ data class LoginRequest(
     val username: String,
     val password: String,
     @SerializedName("device_name") val deviceName: String? = null
+)
+
+/** Body for POST /auth/2fa/login, sent after a login response has [AuthResponse.requiresTwoFactor]. */
+data class TwoFactorLoginRequest(
+    @SerializedName("pending_token") val pendingToken: String,
+    val code: String,
+    @SerializedName("device_name") val deviceName: String? = null
+)
+
+/** Body for PUT /auth/me. `dateOfBirth` is immutable server-side once set (400 if already set), so it's omitted here. */
+data class UpdateMeRequest(
+    @SerializedName("display_name") val displayName: String? = null
 )
 
 // --- Response bodies ---------------------------------------------------------
@@ -84,9 +97,8 @@ data class SessionsResponse(
  * (`get_current_user`, main.py ~L772), tagged `X-Bridge-Auth-Mode: user` for
  * [com.stash.opusplayer.bridge.BridgeAuthInterceptor].
  *
- * NOT modeled in this pass (left for follow-up): /auth/2fa/… (setup/verify/
- * disable/login), PUT /auth/me, /auth/change-password, /auth/delete-account,
- * avatar upload, privacy settings.
+ * NOT modeled in this pass (left for follow-up): /auth/2fa/setup|verify|disable,
+ * /auth/change-password, /auth/delete-account, avatar upload, privacy settings.
  */
 interface AuthApi {
 
@@ -98,6 +110,11 @@ interface AuthApi {
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<AuthResponse>
 
+    /** Completes a login that returned [AuthResponse.requiresTwoFactor] -- same response shape as [login]. */
+    @Headers("X-Bridge-Auth-Mode: none")
+    @POST("auth/2fa/login")
+    suspend fun completeTwoFactorLogin(@Body body: TwoFactorLoginRequest): Response<AuthResponse>
+
     @Headers("X-Bridge-Auth-Mode: user")
     @POST("auth/logout")
     suspend fun logout(): Response<Unit>
@@ -105,6 +122,10 @@ interface AuthApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("auth/me")
     suspend fun me(): Response<BridgeUser>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("auth/me")
+    suspend fun updateMe(@Body body: UpdateMeRequest): Response<BridgeUser>
 
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("auth/sessions")

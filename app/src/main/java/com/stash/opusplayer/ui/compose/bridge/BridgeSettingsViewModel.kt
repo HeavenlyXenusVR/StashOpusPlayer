@@ -8,6 +8,8 @@ import com.stash.opusplayer.bridge.BridgeTokenStore
 import com.stash.opusplayer.bridge.api.AuthApi
 import com.stash.opusplayer.bridge.api.LoginRequest
 import com.stash.opusplayer.bridge.api.RegisterRequest
+import com.stash.opusplayer.bridge.api.TwoFactorLoginRequest
+import com.stash.opusplayer.bridge.api.UpdateMeRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +50,17 @@ data class BridgeSettingsUiState(
     val loginPassword: String = "",
     val registerUsername: String = "",
     val registerPassword: String = "",
-    val registerEmail: String = ""
+    val registerEmail: String = "",
+
+    // --- Two-factor continuation (after a login/register returns requires_2fa) ---
+    val isTwoFactorPending: Boolean = false,
+    val pendingToken: String? = null,
+    val twoFactorCode: String = "",
+
+    // --- Profile (shown once logged in) ---
+    val displayNameInput: String = "",
+    val isSavingDisplayName: Boolean = false,
+    val displayNameJustSaved: Boolean = false
 )
 
 @HiltViewModel
@@ -77,7 +89,16 @@ class BridgeSettingsViewModel @Inject constructor(
                     isConfigured = bridgeConfig.isConfigured()
                 )
             }
+            if (_uiState.value.isLoggedIn) refreshProfile()
         }
+    }
+
+    /** Refreshes [BridgeSettingsUiState.displayNameInput] from the server -- called after login and once at startup if already signed in. */
+    private suspend fun refreshProfile() {
+        val response = runCatching { authApi.me() }.getOrNull() ?: return
+        if (!response.isSuccessful) return
+        val user = response.body() ?: return
+        _uiState.update { it.copy(displayNameInput = user.displayName.orEmpty()) }
     }
 
     // --- Server configuration ---------------------------------------------
@@ -130,6 +151,21 @@ class BridgeSettingsViewModel @Inject constructor(
 
     fun onRegisterEmailChanged(value: String) {
         _uiState.update { it.copy(registerEmail = value) }
+    }
+
+    fun onTwoFactorCodeChanged(value: String) {
+        _uiState.update { it.copy(twoFactorCode = value) }
+    }
+
+    /** Backs out of the 2FA prompt back to the plain login form (e.g. wrong account, changed mind). */
+    fun cancelTwoFactorLogin() {
+        _uiState.update {
+            it.copy(isTwoFactorPending = false, pendingToken = null, twoFactorCode = "", authError = null, authInfo = null)
+        }
+    }
+
+    fun onDisplayNameChanged(value: String) {
+        _uiState.update { it.copy(displayNameInput = value, displayNameJustSaved = false) }
     }
 
     // --- Auth actions ---------------------------------------------------------
@@ -193,11 +229,15 @@ class BridgeSettingsViewModel @Inject constructor(
         }
         val body = response.body()
         when {
-            body?.requiresTwoFactor == true -> {
+            body?.requiresTwoFactor == true && body.pendingToken != null -> {
                 _uiState.update {
                     it.copy(
                         isAuthLoading = false,
-                        authInfo = "Two-factor accounts aren't supported yet."
+                        isTwoFactorPending = true,
+                        pendingToken = body.pendingToken,
+                        twoFactorCode = "",
+                        authError = null,
+                        authInfo = "Enter the 6-digit code from your authenticator app."
                     )
                 }
             }
@@ -211,14 +251,77 @@ class BridgeSettingsViewModel @Inject constructor(
                         username = tokenStore.getUsername(),
                         loginPassword = "",
                         registerPassword = "",
+                        isTwoFactorPending = false,
+                        pendingToken = null,
+                        twoFactorCode = "",
+                        displayNameInput = body.user?.displayName.orEmpty(),
                         authError = null,
                         authInfo = null
                     )
                 }
+                viewModelScope.launch { refreshProfile() }
             }
             else -> {
                 _uiState.update {
                     it.copy(isAuthLoading = false, authError = "Unexpected response from server.")
+                }
+            }
+        }
+    }
+
+    /** Sends the entered TOTP code + [BridgeSettingsUiState.pendingToken] to finish a 2FA-gated login. */
+    fun completeTwoFactorLogin() {
+        val state = _uiState.value
+        if (state.isAuthLoading) return
+        val pendingToken = state.pendingToken ?: return
+        val code = state.twoFactorCode.trim()
+        if (code.isBlank()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAuthLoading = true, authError = null) }
+            try {
+                val response = authApi.completeTwoFactorLogin(
+                    TwoFactorLoginRequest(pendingToken = pendingToken, code = code)
+                )
+                handleAuthResponse(response, fallbackUsername = state.loginUsername.trim())
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        isAuthLoading = false,
+                        authError = "Something went wrong. Check your connection and Bridge server settings."
+                    )
+                }
+            }
+        }
+    }
+
+    /** Saves a new display name via PUT /auth/me. */
+    fun saveDisplayName() {
+        val state = _uiState.value
+        if (state.isSavingDisplayName || !state.isLoggedIn) return
+        val displayName = state.displayNameInput.trim().ifBlank { null }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingDisplayName = true, displayNameJustSaved = false) }
+            try {
+                val response = authApi.updateMe(UpdateMeRequest(displayName = displayName))
+                if (response.isSuccessful) {
+                    val user = response.body()
+                    _uiState.update {
+                        it.copy(
+                            isSavingDisplayName = false,
+                            displayNameJustSaved = true,
+                            displayNameInput = user?.displayName.orEmpty()
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(isSavingDisplayName = false, authError = extractErrorMessage(response))
+                    }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isSavingDisplayName = false, authError = "Couldn't save your display name -- check your connection.")
                 }
             }
         }
@@ -242,6 +345,11 @@ class BridgeSettingsViewModel @Inject constructor(
                     registerUsername = "",
                     registerPassword = "",
                     registerEmail = "",
+                    isTwoFactorPending = false,
+                    pendingToken = null,
+                    twoFactorCode = "",
+                    displayNameInput = "",
+                    displayNameJustSaved = false,
                     authError = null,
                     authInfo = null
                 )

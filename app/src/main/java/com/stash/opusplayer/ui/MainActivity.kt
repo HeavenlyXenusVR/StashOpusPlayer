@@ -58,6 +58,7 @@ import com.stash.opusplayer.utils.UIPerformanceOptimizer
 import com.stash.opusplayer.utils.AnimationDurationManager
 import com.stash.opusplayer.utils.AnimationUtils
 
+@dagger.hilt.android.AndroidEntryPoint
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
     
     private lateinit var binding: ActivityMainBinding

@@ -14,8 +14,11 @@ import com.stash.opusplayer.R
 import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
+import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
+import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
+import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.SmartPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingSettingsFragment
@@ -145,6 +148,30 @@ class SettingsFragment : Fragment() {
             summary = "YouTube API key, Lavalink routing, extractor health, and yt-dlp updates."
         ) {
             openSettingsScreen(StreamingSettingsFragment(), "Streaming & Downloads")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Account & Server",
+            summary = "Sign in with the same account you use on Lumisound -- both apps talk to the same server."
+        ) {
+            openSettingsScreen(BridgeAccountFragment(), "Account & Server")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Friends",
+            summary = "Friend requests and presence, shared with your Lumisound account."
+        ) {
+            openSettingsScreen(FriendsHostFragment(), "Friends")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Browse & Stream",
+            summary = "Browse and stream from the bridge server."
+        ) {
+            openSettingsScreen(StreamingBrowseHostFragment(), "Browse & Stream")
         }
     }
 
