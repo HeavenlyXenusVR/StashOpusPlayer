@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private var pendingMediaDeleteUri: Uri? = null
 
     private val mediaDeleteLauncher = registerForActivityResult(
-        ActivityResultContracts.StartIntentSenderForRequest()
+        ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         val callback = pendingMediaDeleteCallback
         val uri = pendingMediaDeleteUri
