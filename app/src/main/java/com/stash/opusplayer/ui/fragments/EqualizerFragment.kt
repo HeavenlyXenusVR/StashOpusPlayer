@@ -27,9 +27,15 @@ import com.stash.opusplayer.audio.EqualizerPreset
 import com.stash.opusplayer.databinding.FragmentEqualizerBinding
 import com.stash.opusplayer.lua.LuaAudioEffect
 import com.stash.opusplayer.lua.LuaAudioEffectEngine
+import com.stash.opusplayer.lua.LuaUserScriptLibrary
 import com.stash.opusplayer.service.MusicService
 import com.stash.opusplayer.ui.appearance.ThemeManager
+import com.stash.opusplayer.ui.fragments.settings.addActionButton
+import com.stash.opusplayer.ui.fragments.settings.addBodyText
 import com.stash.opusplayer.ui.fragments.settings.addChipButtonRow
+import com.stash.opusplayer.ui.fragments.settings.addSettingsSection
+import com.stash.opusplayer.ui.fragments.settings.addSettingsTile
+import com.stash.opusplayer.ui.fragments.settings.addTextInputControl
 
 class EqualizerFragment : Fragment() {
 
@@ -44,6 +50,9 @@ class EqualizerFragment : Fragment() {
     private var isHydratingUi = false
     private var currentBandRange: Pair<Int, Int> = Pair(-1500, 1500)
     private val defaultPrefs by lazy { PreferenceManager.getDefaultSharedPreferences(requireContext()) }
+    private lateinit var userEffectNameField: com.google.android.material.textfield.TextInputEditText
+    private lateinit var userEffectScriptField: com.google.android.material.textfield.TextInputEditText
+    private lateinit var userEffectsSection: LinearLayout
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -69,6 +78,7 @@ class EqualizerFragment : Fragment() {
         applyAdaptiveChrome()
         setupPresetSpinner()
         setupLuaEffectsRow()
+        setupUserEffectsSection()
         setupEffectsControls()
         setupListeners()
         setupEqualizerBands()
@@ -143,6 +153,101 @@ class EqualizerFragment : Fragment() {
             refreshState = true
         )
         Toast.makeText(requireContext(), "${config.name} applied.", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Community/user EQ-curve script sharing, same shape as
+     * [com.stash.opusplayer.ui.customization.VisualCustomizationFragment]'s
+     * "Import a Preset"/"My Presets" pair -- backed by [LuaUserScriptLibrary]
+     * under a dedicated `lua_effects` subdirectory so it doesn't collide with
+     * the theme or visualizer script libraries. Applying an imported script
+     * goes through the exact same live pipeline [applyLuaEffectPreset] uses
+     * for a bundled one.
+     */
+    private fun setupUserEffectsSection() {
+        val outer = binding.presetSpinner.parent as? LinearLayout ?: return
+
+        val importSection = addSettingsSection(
+            outer,
+            "Import an EQ Script",
+            "Paste a shared Lua EQ-curve script (or write your own) and give it a name."
+        )
+        userEffectNameField = addTextInputControl(
+            importSection,
+            title = "Name",
+            summary = "",
+            hint = "e.g. Deep Bass Crawl",
+            initialText = ""
+        )
+        userEffectScriptField = addTextInputControl(
+            importSection,
+            title = "Script",
+            summary = "",
+            hint = "Lua",
+            initialText = "",
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        ).apply {
+            minLines = 6
+            isSingleLine = false
+        }
+        addActionButton(importSection, "Import") { importUserEffect() }
+
+        userEffectsSection = addSettingsSection(
+            outer,
+            "My EQ Scripts",
+            "Imported EQ scripts -- tap to apply, or delete."
+        )
+        renderUserEffects()
+    }
+
+    private fun importUserEffect() {
+        val name = userEffectNameField.text?.toString()?.trim().orEmpty()
+        val script = userEffectScriptField.text?.toString().orEmpty()
+        if (name.isEmpty() || script.isBlank()) {
+            Toast.makeText(requireContext(), "Give it a name and a script first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        LuaUserScriptLibrary.importScript(requireContext(), script, name, subdirectory = "lua_effects")
+        userEffectNameField.setText("")
+        userEffectScriptField.setText("")
+        renderUserEffects()
+        Toast.makeText(requireContext(), "\"$name\" imported.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun renderUserEffects() {
+        userEffectsSection.removeAllViews()
+        val userScripts = LuaUserScriptLibrary.userScripts(requireContext(), subdirectory = "lua_effects")
+        if (userScripts.isEmpty()) {
+            addBodyText(userEffectsSection, "No imported EQ scripts yet.")
+            return
+        }
+        userScripts.forEach { ref ->
+            addSettingsTile(
+                userEffectsSection,
+                title = ref.displayName,
+                summary = "Tap to apply this imported EQ script.",
+                buttonLabel = "Apply"
+            ) {
+                val source = ref.readSource(requireContext())
+                val config = source?.let { LuaAudioEffectEngine.resolveSource(it, chunkName = ref.id) }
+                if (config != null) {
+                    markEqualizerEnabledLocally()
+                    sendCustomCommand(
+                        "SET_LUA_EFFECT",
+                        bundleOf("eq_bands" to config.eqBands.toFloatArray(), "eq_enabled" to config.eqEnabled),
+                        refreshState = true
+                    )
+                    Toast.makeText(requireContext(), "${config.name} applied.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(requireContext(), "Couldn't run \"${ref.displayName}\" -- check it for errors.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            addChipButtonRow(userEffectsSection, listOf("Delete \"${ref.displayName}\"" to {
+                LuaUserScriptLibrary.deleteUserScript(ref)
+                renderUserEffects()
+                Toast.makeText(requireContext(), "\"${ref.displayName}\" deleted.", Toast.LENGTH_SHORT).show()
+            }))
+        }
     }
 
     private fun setupEffectsControls() {

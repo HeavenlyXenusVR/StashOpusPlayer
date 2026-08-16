@@ -1,6 +1,7 @@
 package com.stash.opusplayer.lua
 
 import android.content.Context
+import androidx.preference.PreferenceManager
 import org.luaj.vm2.LuaTable
 import org.luaj.vm2.lib.jse.JsePlatform
 import java.io.IOException
@@ -17,18 +18,29 @@ import java.io.IOException
  * discrete alternation — see the bundled scripts under
  * `assets/lua_visualizers/` for examples of each technique).
  *
- * Engine-only, like the equalizer-curve engine before its own follow-up:
- * Stash's actual live spectrum renderer,
- * [com.stash.opusplayer.ui.visualizer.EnhancedSynthWaveView], is a
- * substantial custom `View` already juggling several `Paint` objects, several
- * `ValueAnimator`s, live `android.media.audiofx.Visualizer` FFT capture, and
- * multiple selectable render modes, reading its current look straight out of
- * `SharedPreferences` on its own. Wiring a resolved [Config] into that
- * safely means understanding its whole rendering pipeline first, not
- * threading one new input through blind — real follow-up work, not part of
- * getting this engine itself working and buildable.
+ * Wired into the real, live spectrum renderer,
+ * [com.stash.opusplayer.ui.visualizer.EnhancedSynthWaveView] — same
+ * "resolve once, bake the result into the same `SharedPreferences` keys the
+ * hand-editable settings already use, broadcast a change" shape
+ * [com.stash.opusplayer.ui.appearance.lua.LuaThemeEngine] established for
+ * the theme engine. [EnhancedSynthWaveView] reads the persisted [Config]
+ * back out via [configFromPrefs] (in `init` and its existing
+ * `OnSharedPreferenceChangeListener`), so applying a visualizer here takes
+ * effect on any already-open Now Playing screen immediately, not just on
+ * next launch.
  */
 object LuaVisualizerEngine {
+
+    private const val PREF_SELECTED = "lua_visualizer_selected"
+    private const val PREF_COLORS = "lua_visualizer_colors"
+    private const val PREF_SENSITIVITY = "lua_visualizer_sensitivity"
+    private const val PREF_BAR_CORNER_RADIUS = "lua_visualizer_bar_corner_radius"
+    private const val PREF_BAR_SPACING = "lua_visualizer_bar_spacing"
+    private const val PREF_MIRRORED = "lua_visualizer_mirrored"
+    /** Colors are stored as one pref value joined by this separator — none of
+     * the bundled/expected hex strings can contain a comma, so a plain split
+     * is safe without needing a JSON/CSV-escaping dependency for one field. */
+    private const val COLOR_SEPARATOR = ","
 
     data class Config(
         /** Hex gradient stops, bottom-to-top. At least 2 expected. */
@@ -49,6 +61,85 @@ object LuaVisualizerEngine {
             return null
         }
         return resolveSource(source, chunkName = visualizer.filename)
+    }
+
+    /**
+     * Resolves [visualizer]'s bundled script and persists the result into
+     * `SharedPreferences` (same instance/keys [configFromPrefs] and
+     * [com.stash.opusplayer.ui.visualizer.EnhancedSynthWaveView] read) —
+     * once applied, it's indistinguishable from a hardcoded look until a
+     * different one is applied or [clear] is called. Returns the resolved
+     * [Config] (already persisted) so a caller can update its own UI state
+     * without a second read, or `null` (leaving whatever was previously
+     * applied untouched) if the script failed to load/run.
+     */
+    fun apply(context: Context, visualizer: LuaVisualizer): Config? {
+        val config = resolve(context, visualizer) ?: return null
+        persist(context, selectedId = visualizer.filename, config = config)
+        return config
+    }
+
+    /** Same contract as [apply], for a user-provided/imported script's raw source. */
+    fun applySource(context: Context, source: String, chunkName: String): Config? {
+        val config = resolveSource(source, chunkName) ?: return null
+        persist(context, selectedId = "custom:$chunkName", config = config)
+        return config
+    }
+
+    /** Clears any applied Lua visualizer — [configFromPrefs] returns `null` again afterward, and the renderer falls back to its original built-in gradient. */
+    fun clear(context: Context) {
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .remove(PREF_SELECTED)
+            .remove(PREF_COLORS)
+            .remove(PREF_SENSITIVITY)
+            .remove(PREF_BAR_CORNER_RADIUS)
+            .remove(PREF_BAR_SPACING)
+            .remove(PREF_MIRRORED)
+            .apply()
+    }
+
+    /** Which bundled/custom visualizer is currently applied, if any — a bundled one resolves via [LuaVisualizer.fromFilename]; a custom one (imported source) only ever shows as "Custom" in the UI, since the raw script itself isn't kept around once resolved (same "bake the result in, don't re-run the script every read" choice [com.stash.opusplayer.ui.appearance.lua.LuaThemeEngine] makes). */
+    fun selectedVisualizer(context: Context): LuaVisualizer? {
+        val id = PreferenceManager.getDefaultSharedPreferences(context).getString(PREF_SELECTED, null) ?: return null
+        return LuaVisualizer.fromFilename(id)
+    }
+
+    /** `true` if a custom (imported-source) visualizer is currently applied, as opposed to a bundled one or none at all. */
+    fun isCustomSelected(context: Context): Boolean {
+        val id = PreferenceManager.getDefaultSharedPreferences(context).getString(PREF_SELECTED, null) ?: return false
+        return id.startsWith("custom:")
+    }
+
+    /**
+     * Reads back whatever [Config] was last persisted by [apply]/[applySource],
+     * or `null` if none has ever been applied (or it was [clear]ed) — the
+     * renderer treats `null` as "use the original built-in gradient/behavior",
+     * so every field here has to have been genuinely resolved from a real
+     * script at apply-time, never guessed at read-time.
+     */
+    fun configFromPrefs(context: Context): Config? {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val colorsRaw = prefs.getString(PREF_COLORS, null) ?: return null
+        val colors = colorsRaw.split(COLOR_SEPARATOR).filter { it.isNotBlank() }
+        if (colors.size < 2) return null
+        return Config(
+            colors = colors,
+            sensitivity = prefs.getFloat(PREF_SENSITIVITY, 1.0f),
+            barCornerRadius = prefs.getFloat(PREF_BAR_CORNER_RADIUS, 0.0f),
+            barSpacing = prefs.getFloat(PREF_BAR_SPACING, 2.0f),
+            mirrored = prefs.getBoolean(PREF_MIRRORED, false)
+        )
+    }
+
+    private fun persist(context: Context, selectedId: String, config: Config) {
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putString(PREF_SELECTED, selectedId)
+            .putString(PREF_COLORS, config.colors.joinToString(COLOR_SEPARATOR))
+            .putFloat(PREF_SENSITIVITY, config.sensitivity)
+            .putFloat(PREF_BAR_CORNER_RADIUS, config.barCornerRadius)
+            .putFloat(PREF_BAR_SPACING, config.barSpacing)
+            .putBoolean(PREF_MIRRORED, config.mirrored)
+            .apply()
     }
 
     /** Same contract as [resolve], for a user-provided/imported script's raw source. */
