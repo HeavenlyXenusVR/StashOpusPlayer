@@ -8,6 +8,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -26,11 +27,37 @@ data class PublicSocialProfile(
     val username: String,
     @SerializedName("display_name") val displayName: String? = null,
     val bio: String? = null,
+    val pronouns: String? = null,
+    @SerializedName("status_emoji") val statusEmoji: String? = null,
+    @SerializedName("status_text") val statusText: String? = null,
     @SerializedName("show_guestbook") val showGuestbook: Boolean = true,
     @SerializedName("is_friend") val isFriend: Boolean = false,
     @SerializedName("member_since") val memberSince: String? = null,
     val badges: List<ProfileBadge> = emptyList(),
     @SerializedName("listening_streak") val listeningStreak: ListeningStreak? = null
+)
+
+/**
+ * Body for PUT /api/social/profile (`SocialProfileUpdate`, main.py
+ * ~L15357). Every field is independently optional -- omitting one (null)
+ * leaves it unchanged server-side, same convention as
+ * [com.stash.opusplayer.bridge.api.ScrobbleLinkUpdateRequest]. Only the
+ * fields this client can both display AND read back a current value for
+ * (via [PublicSocialProfile]) are modeled: [bio]/[pronouns]/[statusEmoji]/
+ * [statusText]/[showGuestbook]. The rest of `SocialProfileUpdate`
+ * (accent colors, avatar frame/decoration, profile effect,
+ * `share_now_playing`, `show_top_genres`, `show_visitor_stats`,
+ * `show_listening_stats`) is deliberately NOT modeled -- `GET
+ * /api/social/profile/{userId}` doesn't return most of those flags back to
+ * the caller, so an edit UI for them would either show a possibly-wrong
+ * default or need a second `/me`-shaped endpoint this pass doesn't add.
+ */
+data class SocialProfileUpdateRequest(
+    val bio: String? = null,
+    val pronouns: String? = null,
+    @SerializedName("status_emoji") val statusEmoji: String? = null,
+    @SerializedName("status_text") val statusText: String? = null,
+    @SerializedName("show_guestbook") val showGuestbook: Boolean? = null
 )
 
 /**
@@ -92,6 +119,11 @@ interface SocialProfileApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("api/social/profile/{userId}")
     suspend fun getPublicProfile(@Path("userId") userId: String): Response<PublicSocialProfile>
+
+    /** Server caps: bio 280 chars, pronouns 30, status text 60, status emoji 8. 400s over any limit. Fields are always sent as the full edit-form state here (never a true partial omission), so callers should populate every field from the currently-loaded [PublicSocialProfile] before editing, not leave any null unless intentionally leaving that one unchanged. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("api/social/profile")
+    suspend fun updateMyProfile(@Body body: SocialProfileUpdateRequest): Response<BridgeOkResponse>
 
     /** [body]'s `Content-Type` must be `image/jpeg` or `image/gif` -- server sniffs magic bytes regardless of the header, 15MB cap either way. */
     @Headers("X-Bridge-Auth-Mode: user")

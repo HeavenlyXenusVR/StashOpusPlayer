@@ -87,14 +87,30 @@ fun PublicProfileScreen(
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(text = "@${profile.username}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(text = "@${profile.username}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            profile.pronouns?.takeIf { it.isNotBlank() }?.let {
+                                Text(text = "· $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                         if (profile.isFriend) {
                             Text(text = "Friend", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                     }
 
+                    if (!profile.statusEmoji.isNullOrBlank() || !profile.statusText.isNullOrBlank()) {
+                        Text(
+                            text = listOfNotNull(profile.statusEmoji, profile.statusText).joinToString(" "),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+
                     profile.bio?.takeIf { it.isNotBlank() }?.let {
                         Text(text = it, style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    if (viewModel.isSelfProfile()) {
+                        TextButton(onClick = viewModel::startEditingProfile) { Text("Edit Profile") }
                     }
 
                     profile.memberSince?.let {
@@ -161,6 +177,66 @@ fun PublicProfileScreen(
             text = { Text("You'll no longer see each other's profiles, and any friendship or pending request will be removed.") },
             confirmButton = { TextButton(onClick = viewModel::confirmBlock) { Text("Block", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = viewModel::cancelBlockConfirm) { Text("Cancel") } }
+        )
+    }
+
+    if (state.isEditingProfile) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::cancelEditingProfile,
+            title = { Text("Edit Profile") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = state.editBioInput,
+                        onValueChange = viewModel::onEditBioChanged,
+                        label = { Text("Bio") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = state.editPronounsInput,
+                        onValueChange = viewModel::onEditPronounsChanged,
+                        label = { Text("Pronouns") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = state.editStatusEmojiInput,
+                            onValueChange = viewModel::onEditStatusEmojiChanged,
+                            label = { Text("Emoji") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = state.editStatusTextInput,
+                            onValueChange = viewModel::onEditStatusTextChanged,
+                            label = { Text("Status") },
+                            singleLine = true,
+                            modifier = Modifier.weight(2f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "Allow guestbook messages", style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.material3.Switch(
+                            checked = state.editShowGuestbookInput,
+                            onCheckedChange = viewModel::onEditShowGuestbookChanged
+                        )
+                    }
+                    state.profileSaveError?.let {
+                        Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::saveProfile, enabled = !state.isSavingProfile) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelEditingProfile) { Text("Cancel") }
+            }
         )
     }
 }

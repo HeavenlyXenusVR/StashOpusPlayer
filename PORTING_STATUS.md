@@ -325,6 +325,21 @@ confirmed by directory/endpoint survey — not touched by this branch:
   blended mix) -- the score card alone was the contained chunk; a
   playable blend is real future scope.
 
+  **Basic self-profile editing is now ported** too (`PUT
+  /api/social/profile`, an "Edit Profile" button on your own profile
+  screen). Bio, pronouns, a status emoji + text, and the guestbook-
+  enabled toggle -- deliberately only the fields the profile GET
+  response actually returns back to the caller (see
+  `SocialProfileUpdateRequest`'s doc comment): the rest of that same
+  bridge endpoint also accepts accent colors, avatar frame/decoration,
+  profile effect, `share_now_playing`, `show_top_genres`, and the
+  visitor/listening-stats toggles, none of which `GET
+  /api/social/profile/{id}` echoes back, so an edit UI for them would
+  either show a possibly-wrong default or need a second `/me`-shaped
+  endpoint this pass doesn't add. Real future scope, not silently
+  dropped -- same reasoning as the already-noted pinned-tracks/top-
+  genres/accent-customization gaps.
+
   **Friend nicknames and tags are now ported** too (`PUT
   /api/social/friends/{id}/nickname`, `GET /api/social/friends/tags`,
   `POST`/`DELETE /api/social/friends/{id}/tags/{name}`, `Settings ->

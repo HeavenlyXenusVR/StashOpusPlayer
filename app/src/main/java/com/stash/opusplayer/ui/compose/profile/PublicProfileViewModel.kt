@@ -13,6 +13,7 @@ import com.stash.opusplayer.bridge.api.ProfileComment
 import com.stash.opusplayer.bridge.api.PublicSocialProfile
 import com.stash.opusplayer.bridge.api.SocialApi
 import com.stash.opusplayer.bridge.api.SocialProfileApi
+import com.stash.opusplayer.bridge.api.SocialProfileUpdateRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
@@ -31,9 +32,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Backs [PublicProfileScreen], ported from Lumisound's `ProfileView.swift`/
  * `PublicProfileView.swift`. Covers identity + banner + guestbook +
  * badges/streak + blocking + a friends-only Music Match compatibility
- * score -- bio/accent-color editing, pinned tracks, top genres/artists,
- * visitor stats, and the "blend mix" companion to compatibility are still
- * out of scope (see [PublicSocialProfile]'s doc comment).
+ * score + basic self-profile editing (bio/pronouns/status/guestbook
+ * toggle) -- accent-color/avatar-frame/decoration/effect customization,
+ * pinned tracks, top genres/artists, and visitor stats are still out of
+ * scope (see [PublicSocialProfile]'s doc comment for why).
  *
  * "Self view" (own profile, with banner edit controls, and never a Block
  * User button) is detected by comparing the loaded profile's username
@@ -70,7 +72,16 @@ class PublicProfileViewModel @Inject constructor(
         val wasBlocked: Boolean = false,
 
         val compatibility: MusicCompatibility? = null,
-        val isLoadingCompatibility: Boolean = false
+        val isLoadingCompatibility: Boolean = false,
+
+        val isEditingProfile: Boolean = false,
+        val editBioInput: String = "",
+        val editPronounsInput: String = "",
+        val editStatusEmojiInput: String = "",
+        val editStatusTextInput: String = "",
+        val editShowGuestbookInput: Boolean = true,
+        val isSavingProfile: Boolean = false,
+        val profileSaveError: String? = null
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -280,6 +291,76 @@ class PublicProfileViewModel @Inject constructor(
                 _uiState.update { it.copy(isBlocking = false, wasBlocked = true, profile = null) }
             } else {
                 _uiState.update { it.copy(isBlocking = false, error = "Couldn't block that user.") }
+            }
+        }
+    }
+
+    // --- Self-profile editing (bio/pronouns/status/guestbook toggle) --------
+
+    /** Pre-fills the edit form from the currently-loaded profile -- only ever called for a self-view (see [PublicProfileScreen]'s gating). */
+    fun startEditingProfile() {
+        val profile = _uiState.value.profile ?: return
+        _uiState.update {
+            it.copy(
+                isEditingProfile = true,
+                editBioInput = profile.bio.orEmpty(),
+                editPronounsInput = profile.pronouns.orEmpty(),
+                editStatusEmojiInput = profile.statusEmoji.orEmpty(),
+                editStatusTextInput = profile.statusText.orEmpty(),
+                editShowGuestbookInput = profile.showGuestbook,
+                profileSaveError = null
+            )
+        }
+    }
+
+    fun cancelEditingProfile() {
+        _uiState.update { it.copy(isEditingProfile = false) }
+    }
+
+    fun onEditBioChanged(value: String) {
+        _uiState.update { it.copy(editBioInput = value.take(280)) }
+    }
+
+    fun onEditPronounsChanged(value: String) {
+        _uiState.update { it.copy(editPronounsInput = value.take(30)) }
+    }
+
+    fun onEditStatusEmojiChanged(value: String) {
+        _uiState.update { it.copy(editStatusEmojiInput = value.take(8)) }
+    }
+
+    fun onEditStatusTextChanged(value: String) {
+        _uiState.update { it.copy(editStatusTextInput = value.take(60)) }
+    }
+
+    fun onEditShowGuestbookChanged(value: Boolean) {
+        _uiState.update { it.copy(editShowGuestbookInput = value) }
+    }
+
+    fun saveProfile() {
+        val userId = loadedUserId ?: return
+        if (_uiState.value.isSavingProfile) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingProfile = true, profileSaveError = null) }
+            val state = _uiState.value
+            try {
+                val response = socialProfileApi.updateMyProfile(
+                    SocialProfileUpdateRequest(
+                        bio = state.editBioInput,
+                        pronouns = state.editPronounsInput,
+                        statusEmoji = state.editStatusEmojiInput,
+                        statusText = state.editStatusTextInput,
+                        showGuestbook = state.editShowGuestbookInput
+                    )
+                )
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isSavingProfile = false, isEditingProfile = false) }
+                    load(userId)
+                } else {
+                    _uiState.update { it.copy(isSavingProfile = false, profileSaveError = "Couldn't save (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSavingProfile = false, profileSaveError = "Something went wrong. Check your connection.") }
             }
         }
     }
