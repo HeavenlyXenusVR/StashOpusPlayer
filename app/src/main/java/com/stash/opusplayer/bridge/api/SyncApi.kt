@@ -167,6 +167,61 @@ data class AchievementsResponse(
 )
 
 /**
+ * Response of GET /user/scrobble (main.py ~L13524). The actual scrobble
+ * POST to Last.fm/Libre.fm/ListenBrainz happens entirely server-side,
+ * fire-and-forget from POST /user/history -- none of these endpoints ever
+ * scrobble anything themselves, they only manage which accounts are linked.
+ * `listenbrainzLinked` has no matching username field -- ListenBrainz
+ * linking is a bare pasted token, no OAuth-style identity round-trip.
+ */
+data class ScrobbleLinksResponse(
+    @SerializedName("lastfm_linked") val lastfmLinked: Boolean = false,
+    @SerializedName("lastfm_username") val lastfmUsername: String? = null,
+    @SerializedName("listenbrainz_linked") val listenBrainzLinked: Boolean = false,
+    @SerializedName("librefm_linked") val librefmLinked: Boolean = false,
+    @SerializedName("librefm_username") val librefmUsername: String? = null,
+    val enabled: Boolean = true
+)
+
+/**
+ * Body for PUT /user/scrobble. Only models the two fields this client ever
+ * actually sends (ListenBrainz's pasted token, and the enable/disable
+ * toggle) -- the Last.fm/Libre.fm session-key fields the bridge's
+ * `ScrobbleLinkRequest` also accepts are only ever set by the bridge
+ * itself inside the .../link routes below, never sent directly by a
+ * client. Any field left null here is left UNCHANGED server-side, EXCEPT
+ * `enabled`, which the bridge always overwrites (defaulting to `true` if
+ * omitted) -- so a bare ListenBrainz-token PUT also silently re-enables
+ * scrobbling if it was off; harmless in practice since linking is the
+ * user opting back in anyway, but worth knowing.
+ */
+data class ScrobbleLinkUpdateRequest(
+    @SerializedName("listenbrainz_token") val listenBrainzToken: String? = null,
+    val enabled: Boolean? = null
+)
+
+/** Response of POST /user/scrobble/{lastfm,librefm}/request-token. [authUrl] is fully server-constructed -- open it as-is, no client-side URL building. */
+data class ScrobbleRequestTokenResponse(
+    val token: String,
+    @SerializedName("auth_url") val authUrl: String
+)
+
+/** Body for POST /user/scrobble/{lastfm,librefm}/link -- the token from the matching request-token call. */
+data class ScrobbleLinkTokenRequest(
+    val token: String
+)
+
+/** Response of POST /user/scrobble/lastfm/link. A 400 (not 200-with-a-flag) is how the bridge signals "not approved yet" -- see SyncApi's doc comment on the link methods. */
+data class LastfmLinkResponse(
+    @SerializedName("lastfm_username") val lastfmUsername: String? = null
+)
+
+/** Response of POST /user/scrobble/librefm/link -- same 400-on-unapproved contract as [LastfmLinkResponse]. */
+data class LibrefmLinkResponse(
+    @SerializedName("librefm_username") val librefmUsername: String? = null
+)
+
+/**
  * Playlists + favorites + backups + history/achievements -- the "basic
  * sync" subset covered in this pass. All require the user's JWT
  * (`get_current_user`), tagged `X-Bridge-Auth-Mode: user`.
@@ -185,7 +240,11 @@ data class AchievementsResponse(
  * `/user/history` and `/user/achievements` ARE modeled below too --
  * neither reads or writes the `/user/sync` blob at all (achievements are
  * computed live from `ios_play_history`, confirmed against main.py
- * directly), so they carry none of that scoping risk.
+ * directly), so they carry none of that scoping risk. `/user/scrobble*`
+ * (Last.fm/Libre.fm/ListenBrainz account linking) is also modeled --
+ * the actual scrobble POST to those services is entirely server-side,
+ * fire-and-forget from `/user/history`; these routes only ever manage
+ * which accounts are linked, never scrobble anything themselves.
  * Still not modeled: `/user/library/inventory`, `/user/folder-backups`,
  * `/user/stats`, `/user/settings`.
  */
@@ -248,4 +307,36 @@ interface SyncApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("user/achievements")
     suspend fun getAchievements(@Query("tz_offset_minutes") tzOffsetMinutes: Int = 0): Response<AchievementsResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/scrobble")
+    suspend fun getScrobbleLinks(): Response<ScrobbleLinksResponse>
+
+    /** Sets the ListenBrainz token and/or the enable/disable toggle -- see [ScrobbleLinkUpdateRequest]'s doc comment for the "omitted fields are left unchanged, except enabled" caveat. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("user/scrobble")
+    suspend fun updateScrobbleLinks(@Body body: ScrobbleLinkUpdateRequest): Response<Unit>
+
+    /** Unlinks EVERY service at once (Last.fm + Libre.fm + ListenBrainz) -- the bridge has no per-service unlink route, only this blanket one. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @DELETE("user/scrobble")
+    suspend fun unlinkAllScrobbling(): Response<Unit>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/scrobble/lastfm/request-token")
+    suspend fun lastfmRequestToken(): Response<ScrobbleRequestTokenResponse>
+
+    /** 400 (not a flag in a 200 response) means the user hasn't approved the auth_url yet -- expected during normal use, not necessarily an error to alarm the user about on a first attempt. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/scrobble/lastfm/link")
+    suspend fun lastfmLink(@Body body: ScrobbleLinkTokenRequest): Response<LastfmLinkResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/scrobble/librefm/request-token")
+    suspend fun librefmRequestToken(): Response<ScrobbleRequestTokenResponse>
+
+    /** Same 400-on-unapproved contract as [lastfmLink]. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/scrobble/librefm/link")
+    suspend fun librefmLink(@Body body: ScrobbleLinkTokenRequest): Response<LibrefmLinkResponse>
 }

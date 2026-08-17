@@ -21,6 +21,7 @@ import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.MoodPlaylistsFragment
+import com.stash.opusplayer.ui.fragments.settings.ScrobblingFragment
 import com.stash.opusplayer.ui.fragments.settings.TempoAnalyzerFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
@@ -176,6 +177,14 @@ class SettingsFragment : Fragment() {
             summary = "Sign in with the same account you use on Lumisound -- both apps talk to the same server."
         ) {
             openSettingsScreen(BridgeAccountFragment(), "Account & Server")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Scrobbling",
+            summary = "Link Last.fm, Libre.fm, or ListenBrainz -- scrobbles happen automatically once linked."
+        ) {
+            openSettingsScreen(ScrobblingFragment(), "Scrobbling")
         }
 
         addSettingsTile(

@@ -110,6 +110,23 @@ confirmed by directory/endpoint survey — not touched by this branch:
   through the bridge already, no bridge changes needed) and is scoped as
   a separate chunk.
 
+  **Scrobbling is now that separate chunk, and it's done too**
+  (`Settings -> Scrobbling`). Last.fm and Libre.fm both use the same
+  manual two-step web-auth flow Lumisound uses (no polling, no deep
+  link/callback -- the bridge has no way to notify the client when the
+  user finishes approving in the browser): request a token, open the
+  server-provided `auth_url` via a plain `Intent.ACTION_VIEW`, then the
+  user comes back and taps "Finish Linking" -- a 400 there just means
+  "not approved yet." Added one small convenience beyond the iOS
+  original: a pending link auto-retries once, silently, when the screen
+  resumes. ListenBrainz is a plain pasted-token field (no OAuth-style
+  flow on either platform). The actual scrobble POST to any of the three
+  services is entirely server-side, fire-and-forget from `/user/history`
+  -- this chunk is 100% "manage which accounts are linked," zero
+  scrobble-triggering logic on the client. The bridge has no per-service
+  unlink route, only a blanket "unlink everything," which the UI surfaces
+  honestly rather than pretending otherwise.
+
 - **Cloud/account services**: **Account/Auth is now done, including full
   account management** -- sign in/register/logout, 2FA-login continuation,
   display-name editing, **session list/revoke, change password, delete
