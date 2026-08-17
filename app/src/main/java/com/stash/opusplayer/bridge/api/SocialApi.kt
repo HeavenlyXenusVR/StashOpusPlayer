@@ -223,6 +223,24 @@ interface SocialApi {
     @GET("api/social/compatibility/{userId}")
     suspend fun getCompatibility(@Path("userId") userId: String): Response<MusicCompatibility>
 
+    /**
+     * The "press play" companion to [getCompatibility] (main.py ~L16593)
+     * -- a playable mix interleaving the caller's and [userId]'s top
+     * artists via the same seeded-yt-dlp-search approach `/user/discover-mix`
+     * uses. Same friends-only + not-self gating as compatibility. Returns
+     * [BridgeTrack]'s exact shape -- metadata only, resolve via
+     * [com.stash.opusplayer.bridge.BridgeStreamResolver] before playback,
+     * same two-step flow every other bridge-track list in this app uses.
+     * Empty array (not an error) if neither person has enough listening
+     * history to seed a mix from.
+     */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/social/blend/{userId}")
+    suspend fun getBlendMix(
+        @Path("userId") userId: String,
+        @Query("limit") limit: Int = 20
+    ): Response<List<BridgeTrack>>
+
     /** 400s if [userId] isn't an actual friend (`_require_friendship`). */
     @Headers("X-Bridge-Auth-Mode: user")
     @PUT("api/social/friends/{userId}/nickname")

@@ -441,10 +441,18 @@ confirmed by directory/endpoint survey — not touched by this branch:
   friend's profile screen, with a progress bar and shared-artist/
   shared-genre text. Shows "Not enough listening history yet to compute
   a match" instead of a 0% score when either side's history is too
-  thin. Deliberately does NOT model the companion
-  `/api/social/blend/{id}` "press play" mix endpoint (a full playable
-  blended mix) -- the score card alone was the contained chunk; a
-  playable blend is real future scope.
+  thin.
+
+  **Blend Mix -- the "press play" companion to Music Match -- was
+  added in a follow-up pass** too (`GET /api/social/blend/{id}`). A
+  "Play Blend Mix" button next to the score (only shown once a real
+  score is computed, not on "not enough history") loads a playable
+  mix interleaving both people's top artists, using the same seeded-
+  yt-dlp-search + resolve-and-play pipeline built for Discover Mix.
+  Same friends-only gating as the score itself; empty state matches
+  Lumisound's own `BlendMixView` ("Nothing to blend yet..."). Shown
+  inline below the Music Match card rather than as a separate screen,
+  matching this app's established flat-Compose-island pattern.
 
   **Basic self-profile editing is now ported** too (`PUT
   /api/social/profile`, an "Edit Profile" button on your own profile

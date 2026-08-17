@@ -156,6 +156,20 @@ fun PublicProfileScreen(
                         state.compatibility?.let { compat ->
                             Divider()
                             MusicMatchCard(compat)
+                            if (!compat.insufficientData) {
+                                TextButton(onClick = viewModel::requestBlendMix) { Text("Play Blend Mix") }
+                            }
+                        }
+                        if (state.showBlendMix) {
+                            BlendMixSection(
+                                isLoading = state.isLoadingBlendMix,
+                                tracks = state.blendMix,
+                                error = state.blendMixError,
+                                resolvingTrackId = state.resolvingBlendTrackId,
+                                playbackError = state.blendPlaybackError,
+                                onTrackClick = viewModel::playBlendTrack,
+                                onClose = viewModel::closeBlendMix
+                            )
                         }
                     }
 
@@ -478,6 +492,58 @@ private fun MusicMatchCard(compatibility: com.stash.opusplayer.bridge.api.MusicC
             if (compatibility.sharedGenres.isNotEmpty()) {
                 Text(text = "Shared Genres: ${compatibility.sharedGenres.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+@Composable
+private fun BlendMixSection(
+    isLoading: Boolean,
+    tracks: List<com.stash.opusplayer.bridge.api.BridgeTrack>,
+    error: String?,
+    resolvingTrackId: String?,
+    playbackError: String?,
+    onTrackClick: (com.stash.opusplayer.bridge.api.BridgeTrack) -> Unit,
+    onClose: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Blend Mix", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onClose) { Text("Close") }
+        }
+        when {
+            isLoading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            error != null -> Text(text = error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            tracks.isEmpty() -> Text(
+                text = "Nothing to blend yet -- once you both have some listening history, a mix will show up here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            else -> tracks.forEach { track ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = resolvingTrackId == null) { onTrackClick(track) }
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(text = track.title, style = MaterialTheme.typography.bodyMedium)
+                        Text(text = track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (resolvingTrackId == track.id) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    }
+                }
+            }
+        }
+        playbackError?.let {
+            Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
     }
 }

@@ -5,8 +5,12 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.stash.opusplayer.StashOpusApplication
 import com.stash.opusplayer.bridge.BridgeConfig
+import com.stash.opusplayer.bridge.BridgeStreamResolver
 import com.stash.opusplayer.bridge.BridgeTokenStore
+import com.stash.opusplayer.bridge.PlaybackRequest
+import com.stash.opusplayer.bridge.api.BridgeTrack
 import com.stash.opusplayer.bridge.api.MusicCompatibility
 import com.stash.opusplayer.bridge.api.PinnedTrack
 import com.stash.opusplayer.bridge.api.PostProfileCommentRequest
@@ -36,10 +40,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Backs [PublicProfileScreen], ported from Lumisound's `ProfileView.swift`/
  * `PublicProfileView.swift`. Covers identity + banner + guestbook +
  * badges/streak + blocking + a friends-only Music Match compatibility
- * score + basic self-profile editing (bio/pronouns/status/guestbook
- * toggle) + pinned tracks -- accent-color/avatar-frame/decoration/effect
- * customization, top genres/artists, and visitor stats are still out of
- * scope (see [PublicSocialProfile]'s doc comment for why).
+ * score (plus its "press play" Blend Mix companion) + basic self-profile
+ * editing (bio/pronouns/status/guestbook toggle) + pinned tracks --
+ * accent-color/avatar-frame/decoration/effect customization, top genres/
+ * artists, and visitor stats are still out of scope (see
+ * [PublicSocialProfile]'s doc comment for why).
  *
  * Pinned tracks are picked from the on-device library (via
  * [MusicRepository.getAllSongsFromAllSourcesFast]), not a bridge search --
@@ -58,7 +63,8 @@ class PublicProfileViewModel @Inject constructor(
     private val socialProfileApi: SocialProfileApi,
     private val socialApi: SocialApi,
     private val bridgeConfig: BridgeConfig,
-    private val tokenStore: BridgeTokenStore
+    private val tokenStore: BridgeTokenStore,
+    private val streamResolver: BridgeStreamResolver
 ) : ViewModel() {
 
     data class UiState(
@@ -83,6 +89,13 @@ class PublicProfileViewModel @Inject constructor(
 
         val compatibility: MusicCompatibility? = null,
         val isLoadingCompatibility: Boolean = false,
+
+        val showBlendMix: Boolean = false,
+        val isLoadingBlendMix: Boolean = false,
+        val blendMix: List<BridgeTrack> = emptyList(),
+        val blendMixError: String? = null,
+        val resolvingBlendTrackId: String? = null,
+        val blendPlaybackError: String? = null,
 
         val isEditingProfile: Boolean = false,
         val editBioInput: String = "",
@@ -439,6 +452,68 @@ class PublicProfileViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSavingPinnedTracks = false, pinnedTracksError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    // --- Blend Mix --------------------------------------------------------
+
+    /**
+     * The "press play" companion to the Music Match score -- only ever
+     * called from a button next to [UiState.compatibility], matching
+     * Lumisound's `BlendMixView` being reached from a "Play Blend Mix"
+     * button on the same Music Match card, not auto-loaded with the rest
+     * of the profile.
+     */
+    fun requestBlendMix() {
+        val userId = loadedUserId ?: return
+        _uiState.update { it.copy(showBlendMix = true) }
+        if (_uiState.value.blendMix.isNotEmpty() || _uiState.value.isLoadingBlendMix) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingBlendMix = true, blendMixError = null) }
+            try {
+                val response = socialApi.getBlendMix(userId)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingBlendMix = false, blendMix = response.body().orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingBlendMix = false, blendMixError = "Couldn't load blend mix (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingBlendMix = false, blendMixError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    fun closeBlendMix() {
+        _uiState.update { it.copy(showBlendMix = false) }
+    }
+
+    fun playBlendTrack(track: BridgeTrack) {
+        if (_uiState.value.resolvingBlendTrackId != null) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(resolvingBlendTrackId = track.id, blendPlaybackError = null) }
+            val request = PlaybackRequest(
+                sourceId = track.id,
+                source = track.source,
+                url = track.youtubeUrl,
+                preferredFormat = "m4a"
+            )
+            val result = streamResolver.resolve(request)
+            result.onSuccess { resolution ->
+                val song = Song(
+                    id = -1L,
+                    title = track.title,
+                    artist = track.artist,
+                    album = "",
+                    duration = track.durationSeconds * 1000L,
+                    path = resolution.streamUrl
+                )
+                (appContext.applicationContext as? StashOpusApplication)?.playerManager?.playSong(song)
+                _uiState.update { it.copy(resolvingBlendTrackId = null) }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(resolvingBlendTrackId = null, blendPlaybackError = "Couldn't play that track: ${error.message ?: "unknown error"}")
+                }
             }
         }
     }
