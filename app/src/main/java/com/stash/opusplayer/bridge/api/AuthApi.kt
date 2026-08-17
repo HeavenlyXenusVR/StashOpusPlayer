@@ -150,6 +150,12 @@ data class PrivacyUpdateRequest(
     @SerializedName("share_listening_activity") val shareListeningActivity: Boolean? = null
 )
 
+/** Body for PUT /user/bio. Server strips whitespace and caps at 280 chars (400 if over) -- see [BioResponse]'s doc. Distinct from the social-profile bio (`SocialProfileUpdateRequest`, also 280-char capped) -- a separate table/endpoint entirely, not the same field. */
+data class UpdateBioRequest(val bio: String)
+
+/** Response of GET/PUT /user/bio (main.py ~L14679/14690). [bio] is `""` (never null/absent) when unset. */
+data class BioResponse(val bio: String)
+
 /**
  * Account + session endpoints on the Lumisound ios-bridge backend (main.py).
  *
@@ -230,6 +236,15 @@ interface AuthApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @PUT("user/privacy")
     suspend fun updatePrivacy(@Body body: PrivacyUpdateRequest): Response<Unit>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/bio")
+    suspend fun getBio(): Response<BioResponse>
+
+    /** 400 if over 280 chars after server-side trim. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("user/bio")
+    suspend fun setBio(@Body body: UpdateBioRequest): Response<BioResponse>
 
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("auth/2fa/status")

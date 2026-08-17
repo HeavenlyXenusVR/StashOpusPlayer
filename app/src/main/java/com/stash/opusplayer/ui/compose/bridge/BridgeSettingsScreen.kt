@@ -87,6 +87,8 @@ fun BridgeSettingsScreen(
         onCancelTwoFactorLogin = viewModel::cancelTwoFactorLogin,
         onDisplayNameChanged = viewModel::onDisplayNameChanged,
         onSaveDisplayName = viewModel::saveDisplayName,
+        onBioChanged = viewModel::onBioChanged,
+        onSaveBio = viewModel::saveBio,
         onUploadAvatar = viewModel::uploadAvatarFromUri,
         onLoadSessions = viewModel::loadSessions,
         onRevokeSession = viewModel::revokeSession,
@@ -132,6 +134,8 @@ private fun BridgeSettingsContent(
     onCancelTwoFactorLogin: () -> Unit,
     onDisplayNameChanged: (String) -> Unit,
     onSaveDisplayName: () -> Unit,
+    onBioChanged: (String) -> Unit,
+    onSaveBio: () -> Unit,
     onUploadAvatar: (android.net.Uri) -> Unit,
     onLoadSessions: () -> Unit,
     onRevokeSession: (String, Boolean) -> Unit,
@@ -192,7 +196,9 @@ private fun BridgeSettingsContent(
             onCompleteTwoFactorLogin = onCompleteTwoFactorLogin,
             onCancelTwoFactorLogin = onCancelTwoFactorLogin,
             onDisplayNameChanged = onDisplayNameChanged,
-            onSaveDisplayName = onSaveDisplayName
+            onSaveDisplayName = onSaveDisplayName,
+            onBioChanged = onBioChanged,
+            onSaveBio = onSaveBio
         )
 
         if (state.isLoggedIn) {
@@ -852,7 +858,9 @@ private fun AccountSection(
     onCompleteTwoFactorLogin: () -> Unit,
     onCancelTwoFactorLogin: () -> Unit,
     onDisplayNameChanged: (String) -> Unit,
-    onSaveDisplayName: () -> Unit
+    onSaveDisplayName: () -> Unit,
+    onBioChanged: (String) -> Unit,
+    onSaveBio: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -877,6 +885,12 @@ private fun AccountSection(
                     displayNameJustSaved = state.displayNameJustSaved,
                     onDisplayNameChanged = onDisplayNameChanged,
                     onSaveDisplayName = onSaveDisplayName,
+                    bioInput = state.bioInput,
+                    isSavingBio = state.isSavingBio,
+                    bioJustSaved = state.bioJustSaved,
+                    bioError = state.bioError,
+                    onBioChanged = onBioChanged,
+                    onSaveBio = onSaveBio,
                     onLogout = onLogout
                 )
                 else -> LoggedOutContent(
@@ -920,6 +934,12 @@ private fun LoggedInContent(
     displayNameJustSaved: Boolean,
     onDisplayNameChanged: (String) -> Unit,
     onSaveDisplayName: () -> Unit,
+    bioInput: String,
+    isSavingBio: Boolean,
+    bioJustSaved: Boolean,
+    bioError: String?,
+    onBioChanged: (String) -> Unit,
+    onSaveBio: () -> Unit,
     onLogout: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -974,6 +994,45 @@ private fun LoggedInContent(
             }
             Button(onClick = onSaveDisplayName, enabled = !isSavingDisplayName) {
                 if (isSavingDisplayName) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Save")
+                }
+            }
+        }
+
+        Divider()
+
+        Text(text = "Bio", style = MaterialTheme.typography.labelLarge)
+        OutlinedTextField(
+            value = bioInput,
+            onValueChange = onBioChanged,
+            label = { Text("Say something about yourself") },
+            supportingText = { Text("${bioInput.length}/280") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        bioError?.let {
+            Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (bioJustSaved && !isSavingBio) {
+                Text(
+                    text = "Saved",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 12.dp)
+                )
+            }
+            Button(onClick = onSaveBio, enabled = !isSavingBio) {
+                if (isSavingBio) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp,

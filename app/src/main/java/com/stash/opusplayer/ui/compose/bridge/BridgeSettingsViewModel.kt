@@ -18,6 +18,7 @@ import com.stash.opusplayer.bridge.api.DeleteAccountRequest
 import com.stash.opusplayer.bridge.api.LoginRequest
 import com.stash.opusplayer.bridge.api.RegisterRequest
 import com.stash.opusplayer.bridge.api.TwoFactorDisableRequest
+import com.stash.opusplayer.bridge.api.UpdateBioRequest
 import com.stash.opusplayer.bridge.api.TwoFactorLoginRequest
 import com.stash.opusplayer.bridge.api.TwoFactorSetupResponse
 import com.stash.opusplayer.bridge.api.TwoFactorVerifyRequest
@@ -83,6 +84,12 @@ data class BridgeSettingsUiState(
     val displayNameInput: String = "",
     val isSavingDisplayName: Boolean = false,
     val displayNameJustSaved: Boolean = false,
+
+    /** Distinct from the social-profile bio (Public Profile editing) -- a separate free-text tagline, own bridge table/endpoint. */
+    val bioInput: String = "",
+    val isSavingBio: Boolean = false,
+    val bioJustSaved: Boolean = false,
+    val bioError: String? = null,
     /** Needed to build the avatar URL (`{baseUrl}/user/avatar/{userId}`) -- see AuthApi.uploadAvatar's doc comment for why this isn't a server-supplied URL field. */
     val userId: String? = null,
     val isUploadingAvatar: Boolean = false,
@@ -204,6 +211,16 @@ class BridgeSettingsViewModel @Inject constructor(
         loadSessions()
         loadAvatar(user.id)
         loadTwoFactorStatus()
+        loadBio()
+    }
+
+    private fun loadBio() {
+        viewModelScope.launch {
+            val response = runCatching { authApi.getBio() }.getOrNull()
+            if (response?.isSuccessful == true) {
+                _uiState.update { it.copy(bioInput = response.body()?.bio.orEmpty()) }
+            }
+        }
     }
 
     fun setShareListeningActivity(enabled: Boolean) {
@@ -339,6 +356,10 @@ class BridgeSettingsViewModel @Inject constructor(
 
     fun onDisplayNameChanged(value: String) {
         _uiState.update { it.copy(displayNameInput = value, displayNameJustSaved = false) }
+    }
+
+    fun onBioChanged(value: String) {
+        _uiState.update { it.copy(bioInput = value.take(280), bioJustSaved = false, bioError = null) }
     }
 
     fun onCurrentPasswordChanged(value: String) {
@@ -561,6 +582,31 @@ class BridgeSettingsViewModel @Inject constructor(
             } catch (t: Throwable) {
                 _uiState.update {
                     it.copy(isSavingDisplayName = false, authError = "Couldn't save your display name -- check your connection.")
+                }
+            }
+        }
+    }
+
+    /** Trims before saving, matching the Swift original's `saveBio()`. */
+    fun saveBio() {
+        val state = _uiState.value
+        if (state.isSavingBio || !state.isLoggedIn) return
+        val trimmed = state.bioInput.trim()
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingBio = true, bioJustSaved = false, bioError = null) }
+            try {
+                val response = authApi.setBio(UpdateBioRequest(bio = trimmed))
+                if (response.isSuccessful) {
+                    _uiState.update {
+                        it.copy(isSavingBio = false, bioJustSaved = true, bioInput = response.body()?.bio ?: trimmed)
+                    }
+                } else {
+                    _uiState.update { it.copy(isSavingBio = false, bioError = extractErrorMessage(response)) }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isSavingBio = false, bioError = "Couldn't save your bio -- check your connection.")
                 }
             }
         }
@@ -864,6 +910,9 @@ class BridgeSettingsViewModel @Inject constructor(
                     twoFactorCode = "",
                     isStartingDiscordSignIn = false,
                     pendingDiscordAuthorizeUrl = null,
+                    bioInput = "",
+                    bioJustSaved = false,
+                    bioError = null,
                     displayNameInput = "",
                     displayNameJustSaved = false,
                     userId = null,

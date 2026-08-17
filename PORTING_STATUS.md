@@ -668,6 +668,17 @@ confirmed by directory/endpoint survey — not touched by this branch:
   island with internal list/detail state, matching this app's
   established pattern for related sub-screens.
 
+  **Profile Bio is now ported** too (`Bridge Settings -> Bio`, a
+  280-char free-text tagline field under Display Name), ported from
+  `AccountService+Bio.swift`'s `fetchBio`/`setBio`. Distinct from the
+  social-profile bio (already-shipped Public Profile editing, `PUT
+  /api/social/profile`) -- a separate bridge table/endpoint (`GET`/`PUT
+  /user/bio`) entirely, not the same field, matching the iOS code
+  comment's own note that it deliberately avoids touching the
+  fragile positional-column user-row/settings code. Trimmed client-side
+  before save (matching Swift's `saveBio()`), 280-char cap enforced
+  server-side (400 on overflow, surfaced as an inline error).
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots
