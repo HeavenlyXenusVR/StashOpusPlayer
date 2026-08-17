@@ -290,6 +290,22 @@ confirmed by directory/endpoint survey — not touched by this branch:
   `/api/social/blend/{id}` "press play" mix endpoint (a full playable
   blended mix) -- the score card alone was the contained chunk; a
   playable blend is real future scope.
+
+  **Friend nicknames and tags are now ported** too (`PUT
+  /api/social/friends/{id}/nickname`, `GET /api/social/friends/tags`,
+  `POST`/`DELETE /api/social/friends/{id}/tags/{name}`, `Settings ->
+  Friends`). A private nickname per friend (visible only to the
+  caller, never the friend themselves -- purely a personal
+  organizational label, same spirit as a phone contact's custom name)
+  and up to 10 free-form tags per friend, both edited via a small
+  dialog reached from an "Edit" button on each friend row, ported from
+  Lumisound's per-friend "..." sheet in `FriendsListView.swift`. The
+  friend row itself shows the nickname as the primary label when set
+  (falling back to display name, then username -- matching iOS's
+  `effectiveName`), the raw `@username` alongside only when a nickname
+  exists, and any tags as small chips. `BridgeFriend` already carried
+  `nickname`/`tags` fields from an earlier pass with nothing to
+  populate them -- this chunk is what actually wires them up.
   `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.

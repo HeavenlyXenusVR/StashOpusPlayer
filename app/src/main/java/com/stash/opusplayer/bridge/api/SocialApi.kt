@@ -7,6 +7,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -123,19 +124,34 @@ data class MusicCompatibility(
     @SerializedName("shared_genres") val sharedGenres: List<String> = emptyList()
 )
 
+/** Body for PUT /api/social/friends/{friendId}/nickname (`FriendNicknameUpdate`, main.py ~L16686). Null or blank clears the nickname; max 60 chars server-side. Private to the caller -- never visible to the friend or anyone else. */
+data class FriendNicknameUpdate(
+    val nickname: String? = null
+)
+
+/** Response of GET /api/social/friends/tags: distinct tag names the caller has ever used across all friends (main.py ~L16734), for a filter-chip row / autocomplete -- not per-friend. */
+data class FriendTagNamesResponse(
+    val tags: List<String> = emptyList()
+)
+
+/** Body for POST /api/social/friends/{friendId}/tags (`FriendTagCreate`, main.py ~L16690). Max 40 chars, max 10 tags per friend, both enforced server-side (400s over either limit). */
+data class FriendTagCreate(
+    @SerializedName("tag_name") val tagName: String
+)
+
 /**
  * A representative subset of `/api/social/…` — friends list/requests, a
- * presence heartbeat, the friends activity feed/leaderboard, blocking, and
- * a friend's compatibility score. All require the user's JWT
- * (`get_current_user`), tagged `X-Bridge-Auth-Mode: user`.
+ * presence heartbeat, the friends activity feed/leaderboard, blocking, a
+ * friend's compatibility score, and per-friend nicknames/tags. All require
+ * the user's JWT (`get_current_user`), tagged `X-Bridge-Auth-Mode: user`.
  *
  * NOT modeled in this pass (left for follow-up): profile endpoints
  * (/api/social/profile/…, including avatar/banner upload and pinned tracks
  * — banner + guestbook comments ARE modeled, see
- * [com.stash.opusplayer.bridge.api.SocialProfileApi]), friend nicknames/
- * tags, presence-for-friends / listening-together, the blend-mix
- * companion to compatibility, and discovery (/social/discover,
- * /social/similar-listeners, /social/trending-by-energy).
+ * [com.stash.opusplayer.bridge.api.SocialProfileApi]), presence-for-
+ * friends / listening-together, the blend-mix companion to compatibility,
+ * and discovery (/social/discover, /social/similar-listeners,
+ * /social/trending-by-energy).
  */
 interface SocialApi {
 
@@ -193,4 +209,31 @@ interface SocialApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("api/social/compatibility/{userId}")
     suspend fun getCompatibility(@Path("userId") userId: String): Response<MusicCompatibility>
+
+    /** 400s if [userId] isn't an actual friend (`_require_friendship`). */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("api/social/friends/{userId}/nickname")
+    suspend fun setFriendNickname(
+        @Path("userId") userId: String,
+        @Body body: FriendNicknameUpdate
+    ): Response<BridgeOkResponse>
+
+    /** Distinct tag names across ALL friends, not per-friend -- see [FriendTagNamesResponse]'s doc comment. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/social/friends/tags")
+    suspend fun getFriendTagNames(): Response<FriendTagNamesResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("api/social/friends/{userId}/tags")
+    suspend fun addFriendTag(
+        @Path("userId") userId: String,
+        @Body body: FriendTagCreate
+    ): Response<BridgeOkResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @DELETE("api/social/friends/{userId}/tags/{tagName}")
+    suspend fun removeFriendTag(
+        @Path("userId") userId: String,
+        @Path("tagName") tagName: String
+    ): Response<BridgeOkResponse>
 }

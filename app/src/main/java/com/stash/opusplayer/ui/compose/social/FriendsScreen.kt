@@ -14,13 +14,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -76,7 +80,27 @@ fun FriendsScreen(
                 onSendRequest = viewModel::sendFriendRequest,
                 onAccept = viewModel::acceptRequest,
                 onDecline = viewModel::declineRequest,
-                onFriendClick = onFriendClick
+                onFriendClick = onFriendClick,
+                onEditFriend = viewModel::startEditingFriend
+            )
+        }
+    }
+
+    if (uiState.editingFriendId != null) {
+        val friend = uiState.friends.firstOrNull { it.userId == uiState.editingFriendId }
+        if (friend != null) {
+            FriendEditDialog(
+                friend = friend,
+                nicknameInput = uiState.editNicknameInput,
+                newTagInput = uiState.editNewTagInput,
+                allTagNames = uiState.allTagNames,
+                isSaving = uiState.isSavingEdit,
+                onNicknameChanged = viewModel::onEditNicknameChanged,
+                onNewTagChanged = viewModel::onEditNewTagChanged,
+                onAddTag = viewModel::addTag,
+                onRemoveTag = viewModel::removeTag,
+                onSaveNickname = viewModel::saveNickname,
+                onDismiss = viewModel::cancelEditingFriend
             )
         }
     }
@@ -126,7 +150,8 @@ private fun FriendsContent(
     onSendRequest: () -> Unit,
     onAccept: (String) -> Unit,
     onDecline: (String) -> Unit,
-    onFriendClick: (String) -> Unit
+    onFriendClick: (String) -> Unit,
+    onEditFriend: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -198,7 +223,11 @@ private fun FriendsContent(
             }
         } else {
             items(friends, key = { it.userId }) { friend ->
-                FriendRow(friend, onClick = { onFriendClick(friend.userId) })
+                FriendRow(
+                    friend,
+                    onClick = { onFriendClick(friend.userId) },
+                    onEditClick = { onEditFriend(friend.userId) }
+                )
             }
         }
     }
@@ -250,22 +279,139 @@ private fun SendFriendRequestCard(
 }
 
 @Composable
-private fun FriendRow(friend: BridgeFriend, onClick: () -> Unit) {
+private fun FriendRow(friend: BridgeFriend, onClick: () -> Unit, onEditClick: () -> Unit) {
+    val hasNickname = !friend.nickname.isNullOrBlank()
+    // Nickname (private, caller-only) takes precedence, matching Lumisound's
+    // `effectiveName` -- nickname ?? displayName ?? username. The raw
+    // @username is only shown alongside when a nickname is set, since
+    // otherwise the primary label already IS the username/display name.
+    val effectiveName = friend.nickname?.takeIf { it.isNotBlank() }
+        ?: friend.displayName?.takeIf { it.isNotBlank() }
+        ?: friend.username
+
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = friend.displayName?.takeIf { it.isNotBlank() } ?: friend.username,
-                style = MaterialTheme.typography.titleMedium
-            )
-            if (!friend.displayName.isNullOrBlank()) {
-                Text(
-                    text = "@${friend.username}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(text = effectiveName, style = MaterialTheme.typography.titleMedium)
+                    if (hasNickname) {
+                        Text(
+                            text = "@${friend.username}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (!hasNickname && !friend.displayName.isNullOrBlank()) {
+                    Text(
+                        text = "@${friend.username}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (friend.tags.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        friend.tags.forEach { tag ->
+                            Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
+                                Text(
+                                    text = tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
+            TextButton(onClick = onEditClick) { Text("Edit") }
         }
     }
+}
+
+@Composable
+private fun FriendEditDialog(
+    friend: BridgeFriend,
+    nicknameInput: String,
+    newTagInput: String,
+    allTagNames: List<String>,
+    isSaving: Boolean,
+    onNicknameChanged: (String) -> Unit,
+    onNewTagChanged: (String) -> Unit,
+    onAddTag: (String) -> Unit,
+    onRemoveTag: (String) -> Unit,
+    onSaveNickname: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(friend.displayName?.takeIf { it.isNotBlank() } ?: friend.username) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(text = "Nickname (only visible to you)", style = MaterialTheme.typography.labelMedium)
+                OutlinedTextField(
+                    value = nicknameInput,
+                    onValueChange = onNicknameChanged,
+                    label = { Text(friend.displayName?.takeIf { it.isNotBlank() } ?: friend.username) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Divider()
+
+                Text(text = "Tags", style = MaterialTheme.typography.labelMedium)
+                if (friend.tags.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        friend.tags.forEach { tag ->
+                            Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                    Text(text = tag, style = MaterialTheme.typography.labelSmall)
+                                    Text(
+                                        text = " ×",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.clickable { onRemoveTag(tag) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newTagInput,
+                        onValueChange = onNewTagChanged,
+                        label = { Text("Add tag") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { onAddTag(newTagInput) }, enabled = newTagInput.isNotBlank()) { Text("Add") }
+                }
+                val suggestions = allTagNames.filterNot { friend.tags.contains(it) }
+                if (suggestions.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        suggestions.take(6).forEach { tag ->
+                            Surface(
+                                shape = MaterialTheme.shapes.extraLarge,
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.clickable { onAddTag(tag) }
+                            ) {
+                                Text(text = tag, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSaveNickname, enabled = !isSaving) { Text("Save Nickname") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
 }
 
 @Composable

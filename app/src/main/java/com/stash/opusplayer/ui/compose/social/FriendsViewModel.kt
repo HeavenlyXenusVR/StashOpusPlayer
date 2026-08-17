@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.stash.opusplayer.bridge.BridgeTokenStore
 import com.stash.opusplayer.bridge.api.BridgeFriend
+import com.stash.opusplayer.bridge.api.FriendNicknameUpdate
 import com.stash.opusplayer.bridge.api.FriendRequestCreate
 import com.stash.opusplayer.bridge.api.FriendRequestEntry
+import com.stash.opusplayer.bridge.api.FriendTagCreate
 import com.stash.opusplayer.bridge.api.SocialApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -38,7 +40,13 @@ data class FriendsUiState(
     val sendRequestUsername: String = "",
     val isSendingRequest: Boolean = false,
     val sendRequestFeedback: String? = null,
-    val pendingRequestActionIds: Set<String> = emptySet()
+    val pendingRequestActionIds: Set<String> = emptySet(),
+
+    val editingFriendId: String? = null,
+    val editNicknameInput: String = "",
+    val editNewTagInput: String = "",
+    val allTagNames: List<String> = emptyList(),
+    val isSavingEdit: Boolean = false
 )
 
 @HiltViewModel
@@ -180,6 +188,88 @@ class FriendsViewModel @Inject constructor(
         } catch (_: Exception) {
             // Best-effort refresh after sending a request; the send itself already
             // succeeded, so silently skip if this follow-up read fails.
+        }
+    }
+
+    // --- Per-friend nickname/tags edit dialog --------------------------------
+
+    /**
+     * Opens the nickname/tags editor for [friendId], ported from Lumisound's
+     * per-friend "..." sheet in `FriendsListView.swift`. [allTagNames] is
+     * fetched fresh each time (distinct tag names across ALL friends, for
+     * quick-add chips of tags the caller has already used elsewhere) rather
+     * than cached, since it can change between visits.
+     */
+    fun startEditingFriend(friendId: String) {
+        val friend = _uiState.value.friends.firstOrNull { it.userId == friendId } ?: return
+        _uiState.update {
+            it.copy(
+                editingFriendId = friendId,
+                editNicknameInput = friend.nickname.orEmpty(),
+                editNewTagInput = ""
+            )
+        }
+        viewModelScope.launch {
+            val response = runCatching { socialApi.getFriendTagNames() }.getOrNull()
+            if (response?.isSuccessful == true) {
+                _uiState.update { it.copy(allTagNames = response.body()?.tags.orEmpty()) }
+            }
+        }
+    }
+
+    fun cancelEditingFriend() {
+        _uiState.update { it.copy(editingFriendId = null) }
+    }
+
+    fun onEditNicknameChanged(value: String) {
+        _uiState.update { it.copy(editNicknameInput = value.take(60)) }
+    }
+
+    fun onEditNewTagChanged(value: String) {
+        _uiState.update { it.copy(editNewTagInput = value.take(40)) }
+    }
+
+    fun saveNickname() {
+        val friendId = _uiState.value.editingFriendId ?: return
+        val nickname = _uiState.value.editNicknameInput.trim()
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingEdit = true) }
+            val response = runCatching {
+                socialApi.setFriendNickname(friendId, FriendNicknameUpdate(nickname.ifBlank { null }))
+            }.getOrNull()
+            if (response?.isSuccessful == true) {
+                updateLocalFriend(friendId) { it.copy(nickname = nickname.ifBlank { null }) }
+            }
+            _uiState.update { it.copy(isSavingEdit = false) }
+        }
+    }
+
+    fun addTag(tagName: String) {
+        val friendId = _uiState.value.editingFriendId ?: return
+        val trimmed = tagName.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            val response = runCatching { socialApi.addFriendTag(friendId, FriendTagCreate(trimmed)) }.getOrNull()
+            if (response?.isSuccessful == true) {
+                updateLocalFriend(friendId) { it.copy(tags = (it.tags + trimmed).distinct()) }
+                _uiState.update { it.copy(editNewTagInput = "") }
+            }
+        }
+    }
+
+    fun removeTag(tagName: String) {
+        val friendId = _uiState.value.editingFriendId ?: return
+        viewModelScope.launch {
+            val response = runCatching { socialApi.removeFriendTag(friendId, tagName) }.getOrNull()
+            if (response?.isSuccessful == true) {
+                updateLocalFriend(friendId) { it.copy(tags = it.tags - tagName) }
+            }
+        }
+    }
+
+    private fun updateLocalFriend(friendId: String, transform: (BridgeFriend) -> BridgeFriend) {
+        _uiState.update { state ->
+            state.copy(friends = state.friends.map { if (it.userId == friendId) transform(it) else it })
         }
     }
 }
