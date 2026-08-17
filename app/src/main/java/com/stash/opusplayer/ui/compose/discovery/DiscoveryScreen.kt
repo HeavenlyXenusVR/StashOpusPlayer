@@ -47,6 +47,16 @@ fun DiscoveryScreen(
                 onClick = { viewModel.onTabSelected(DiscoveryTab.ON_THIS_DAY) },
                 text = { Text("On This Day") }
             )
+            Tab(
+                selected = state.selectedTab == DiscoveryTab.TRENDING,
+                onClick = { viewModel.onTabSelected(DiscoveryTab.TRENDING) },
+                text = { Text("Trending") }
+            )
+            Tab(
+                selected = state.selectedTab == DiscoveryTab.COMMUNITY,
+                onClick = { viewModel.onTabSelected(DiscoveryTab.COMMUNITY) },
+                text = { Text("Community") }
+            )
         }
 
         when (state.selectedTab) {
@@ -63,6 +73,16 @@ fun DiscoveryScreen(
                 error = state.onThisDayError,
                 resolvingTrackId = state.resolvingTrackId,
                 onTrackClick = viewModel::playTrack
+            )
+            DiscoveryTab.TRENDING -> TrendingContent(
+                isLoading = state.isLoadingTrending,
+                tracks = state.trending,
+                error = state.trendingError
+            )
+            DiscoveryTab.COMMUNITY -> CommunityActivityContent(
+                isLoading = state.isLoadingCommunityActivity,
+                activity = state.communityActivity,
+                error = state.communityActivityError
             )
         }
 
@@ -176,5 +196,103 @@ private fun EmptyState(title: String, message: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(text = title, style = MaterialTheme.typography.titleMedium)
         Text(text = message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun TrendingContent(
+    isLoading: Boolean,
+    tracks: List<com.stash.opusplayer.bridge.api.TrendingTrack>,
+    error: String?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "What everyone who's opted in is playing most, last 7 days.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        when {
+            isLoading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            error != null -> Text(text = error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            tracks.isEmpty() -> EmptyState(
+                title = "Nothing trending yet",
+                message = "Check back once more listeners opt in to Share Listening Activity (Settings -> Account & Server)."
+            )
+            else -> tracks.forEachIndexed { index, track ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "${index + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column {
+                            Text(text = track.title, style = MaterialTheme.typography.bodyMedium)
+                            track.artist?.takeIf { it.isNotBlank() }?.let {
+                                Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "${track.playCount} plays", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = "${track.listenerCount} listener${if (track.listenerCount == 1) "" else "s"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Divider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommunityActivityContent(
+    isLoading: Boolean,
+    activity: List<com.stash.opusplayer.bridge.api.GlobalActivityEntry>,
+    error: String?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Recent plays from everyone who's opted in -- not just friends.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        when {
+            isLoading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            error != null -> Text(text = error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            activity.isEmpty() -> EmptyState(
+                title = "Nothing here yet",
+                message = "Check back once more listeners opt in to Share Listening Activity."
+            )
+            else -> activity.forEach { entry ->
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Text(
+                        text = entry.displayName?.takeIf { it.isNotBlank() } ?: entry.username,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val subtitle = listOfNotNull(entry.title, entry.artist).joinToString(" — ")
+                    if (subtitle.isNotBlank()) {
+                        Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Divider()
+            }
+        }
     }
 }

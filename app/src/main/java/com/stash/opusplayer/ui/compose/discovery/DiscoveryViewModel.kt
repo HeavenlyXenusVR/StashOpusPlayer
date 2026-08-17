@@ -8,7 +8,9 @@ import com.stash.opusplayer.bridge.BridgeStreamResolver
 import com.stash.opusplayer.bridge.PlaybackRequest
 import com.stash.opusplayer.bridge.api.BridgeTrack
 import com.stash.opusplayer.bridge.api.DiscoveryApi
+import com.stash.opusplayer.bridge.api.GlobalActivityEntry
 import com.stash.opusplayer.bridge.api.OnThisDayGroup
+import com.stash.opusplayer.bridge.api.TrendingTrack
 import com.stash.opusplayer.data.Song
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -20,7 +22,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Which half of the screen is currently shown. */
-enum class DiscoveryTab { DISCOVER_MIX, ON_THIS_DAY }
+enum class DiscoveryTab { DISCOVER_MIX, ON_THIS_DAY, TRENDING, COMMUNITY }
 
 /**
  * Backs `Settings -> Discover`, ported from Lumisound's `DiscoverMixView.swift`/
@@ -60,6 +62,14 @@ class DiscoveryViewModel @Inject constructor(
         val onThisDay: List<OnThisDayGroup> = emptyList(),
         val onThisDayError: String? = null,
 
+        val isLoadingTrending: Boolean = true,
+        val trending: List<TrendingTrack> = emptyList(),
+        val trendingError: String? = null,
+
+        val isLoadingCommunityActivity: Boolean = true,
+        val communityActivity: List<GlobalActivityEntry> = emptyList(),
+        val communityActivityError: String? = null,
+
         val resolvingTrackId: String? = null,
         val playbackError: String? = null
     )
@@ -70,6 +80,8 @@ class DiscoveryViewModel @Inject constructor(
     init {
         loadDiscoverMix()
         loadOnThisDay()
+        loadTrending()
+        loadCommunityActivity()
     }
 
     fun onTabSelected(tab: DiscoveryTab) {
@@ -104,6 +116,40 @@ class DiscoveryViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoadingOnThisDay = false, onThisDayError = "Something went wrong. Check your connection and sign-in.") }
+            }
+        }
+    }
+
+    /** Global trending -- title/artist pairs, purely informational, no tap-to-play, matching Lumisound's own Trending tab (no `track_url`/id to resolve against anyway, this is an aggregate, not a single history row). */
+    fun loadTrending() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingTrending = true, trendingError = null) }
+            try {
+                val response = discoveryApi.getTrendingTracks()
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingTrending = false, trending = response.body()?.tracks.orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingTrending = false, trendingError = "Couldn't load trending tracks (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingTrending = false, trendingError = "Something went wrong. Check your connection and sign-in.") }
+            }
+        }
+    }
+
+    /** "What others are listening to" among ALL opted-in users, not just friends -- distinct from the friends-only feed in [com.stash.opusplayer.ui.compose.social.FriendActivityScreen]. Also purely informational. */
+    fun loadCommunityActivity() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingCommunityActivity = true, communityActivityError = null) }
+            try {
+                val response = discoveryApi.getGlobalActivity()
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingCommunityActivity = false, communityActivity = response.body()?.activity.orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingCommunityActivity = false, communityActivityError = "Couldn't load community activity (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingCommunityActivity = false, communityActivityError = "Something went wrong. Check your connection and sign-in.") }
             }
         }
     }

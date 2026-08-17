@@ -59,6 +59,7 @@ fun BridgeSettingsScreen(
     BridgeSettingsContent(
         state = uiState,
         onViewMyProfile = onViewMyProfile,
+        onShareListeningActivityChanged = viewModel::setShareListeningActivity,
         onBaseUrlChanged = viewModel::onBaseUrlChanged,
         onApiKeyChanged = viewModel::onApiKeyChanged,
         onSaveConfig = viewModel::saveServerConfig,
@@ -123,6 +124,7 @@ private fun BridgeSettingsContent(
     onRequestDeleteAccountConfirm: () -> Unit,
     onCancelDeleteAccountConfirm: () -> Unit,
     onConfirmDeleteAccount: () -> Unit,
+    onShareListeningActivityChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -178,6 +180,26 @@ private fun BridgeSettingsContent(
                 TextButton(onClick = { onViewMyProfile(userId) }) {
                     Text("View My Public Profile")
                 }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Share Listening Activity", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "Lets other signed-in users see your recent plays (title/artist only) on the Discover screen.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                androidx.compose.material3.Switch(
+                    checked = state.shareListeningActivity,
+                    onCheckedChange = onShareListeningActivityChanged,
+                    enabled = !state.isUpdatingPrivacy
+                )
             }
 
             Divider()

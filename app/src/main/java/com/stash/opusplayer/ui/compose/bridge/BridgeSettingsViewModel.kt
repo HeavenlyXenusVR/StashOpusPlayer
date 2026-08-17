@@ -99,7 +99,12 @@ data class BridgeSettingsUiState(
     val deleteAccountPasswordInput: String = "",
     val isDeletingAccount: Boolean = false,
     val deleteAccountError: String? = null,
-    val showDeleteAccountConfirm: Boolean = false
+    val showDeleteAccountConfirm: Boolean = false,
+
+    // --- Privacy ---
+    /** Whether recent plays (title/artist only) are visible to other signed-in users via `/social/activity` and `/social/discover` -- see `Settings -> Discover`'s Trending/Community tabs. */
+    val shareListeningActivity: Boolean = false,
+    val isUpdatingPrivacy: Boolean = false
 )
 
 @HiltViewModel
@@ -138,9 +143,29 @@ class BridgeSettingsViewModel @Inject constructor(
         val response = runCatching { authApi.me() }.getOrNull() ?: return
         if (!response.isSuccessful) return
         val user = response.body() ?: return
-        _uiState.update { it.copy(displayNameInput = user.displayName.orEmpty(), userId = user.id) }
+        _uiState.update {
+            it.copy(
+                displayNameInput = user.displayName.orEmpty(),
+                userId = user.id,
+                shareListeningActivity = user.shareListeningActivity
+            )
+        }
         loadSessions()
         loadAvatar(user.id)
+    }
+
+    fun setShareListeningActivity(enabled: Boolean) {
+        if (_uiState.value.isUpdatingPrivacy) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUpdatingPrivacy = true) }
+            val response = runCatching {
+                authApi.updatePrivacy(com.stash.opusplayer.bridge.api.PrivacyUpdateRequest(shareListeningActivity = enabled))
+            }.getOrNull()
+            if (response?.isSuccessful == true) {
+                _uiState.update { it.copy(shareListeningActivity = enabled) }
+            }
+            _uiState.update { it.copy(isUpdatingPrivacy = false) }
+        }
     }
 
     /**

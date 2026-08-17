@@ -100,6 +100,17 @@ data class SessionsResponse(
 )
 
 /**
+ * Body for PUT /user/privacy (`PrivacyRequest`, main.py ~L5327). Either
+ * field may be omitted (left null) to leave that setting unchanged --
+ * this client only ever sends [shareListeningActivity]. [aiAssistedSuggestions]
+ * is accepted server-side for backward compatibility but no longer read by
+ * anything, so it's not modeled here.
+ */
+data class PrivacyUpdateRequest(
+    @SerializedName("share_listening_activity") val shareListeningActivity: Boolean? = null
+)
+
+/**
  * Account + session endpoints on the Lumisound ios-bridge backend (main.py).
  *
  * /auth/register and /auth/login require NEITHER the operator API key nor a
@@ -109,8 +120,7 @@ data class SessionsResponse(
  * (`get_current_user`, main.py ~L772), tagged `X-Bridge-Auth-Mode: user` for
  * [com.stash.opusplayer.bridge.BridgeAuthInterceptor].
  *
- * NOT modeled in this pass (left for follow-up): /auth/2fa/setup|verify|disable,
- * privacy settings.
+ * NOT modeled in this pass (left for follow-up): /auth/2fa/setup|verify|disable.
  */
 interface AuthApi {
 
@@ -171,4 +181,9 @@ interface AuthApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @POST("user/avatar")
     suspend fun uploadAvatar(@Body body: RequestBody): Response<Unit>
+
+    /** Toggles whether recent plays (title/artist only) are visible to other signed-in users via GET /social/activity and /social/discover. Current value comes back on [BridgeUser.shareListeningActivity] from [me]. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("user/privacy")
+    suspend fun updatePrivacy(@Body body: PrivacyUpdateRequest): Response<Unit>
 }

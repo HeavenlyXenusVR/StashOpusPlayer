@@ -158,6 +158,20 @@ confirmed by directory/endpoint survey — not touched by this branch:
   found, the user isn't signed in, or the request fails -- no error state,
   matching iOS's own treatment.
 
+  **Two more Discover tabs, Trending and Community, are now ported**
+  too (`GET /social/discover`, `GET /social/activity`) -- purely
+  informational lists, no tap-to-play, matching Lumisound's own
+  `DiscoverView` exactly (its Trending tab has no tap handler either;
+  these rows are title/artist aggregates, not single history rows with
+  a resolvable URL). Both draw only from users who opted into a new
+  **Share Listening Activity** toggle (`PUT /user/privacy`, `Settings
+  -> Account & Server`) -- separate from the friends-only
+  `share_now_playing` toggle behind the already-shipped Friend
+  Activity/Leaderboard feature; this one controls visibility to ALL
+  signed-in users, not just friends. Trending ranks title/artist pairs
+  by play count over the last 7 days; Community is a flat "what
+  everyone's listening to" feed, newest first.
+
   Avatar upload/display goes through
   `{baseUrl}/user/avatar/{userId}` directly (a raw-bytes GET/POST, not a
   `avatar_url` JSON field -- that column is dead/unused server-side, same

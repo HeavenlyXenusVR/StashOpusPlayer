@@ -42,8 +42,46 @@ data class ArtistBioResponse(
     val tags: List<String> = emptyList()
 )
 
+/** One row of GET /social/discover's `tracks` array (main.py ~L7794) -- global trending title/artist pairs (not per-user, not friends-only) among users who opted into `share_listening_activity`. No `track_url`/`id`/`source` at all (grouped aggregate, not a single history row) -- purely informational, matching Lumisound's own `DiscoverView` Trending tab, which has no tap-to-play either. */
+data class TrendingTrack(
+    val title: String,
+    val artist: String? = null,
+    @SerializedName("play_count") val playCount: Int = 0,
+    @SerializedName("listener_count") val listenerCount: Int = 0
+)
+
+data class TrendingTracksResponse(
+    val tracks: List<TrendingTrack> = emptyList()
+)
+
+/** One row of GET /social/activity's `activity` array (main.py ~L7755) -- "what others are listening to" among ALL opted-in users, not just friends (distinct from [SocialApi.getFriendsActivity]). No user id at all, purely informational. */
+data class GlobalActivityEntry(
+    val username: String,
+    @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    @SerializedName("played_at") val playedAt: String? = null
+)
+
+data class GlobalActivityResponse(
+    val activity: List<GlobalActivityEntry> = emptyList()
+)
+
 /**
- * Discover Mix, On This Day, and Artist Bio -- three read-only, JWT-gated
+ * Discover Mix, On This Day, Artist Bio, and the opt-in global Trending/
+ * Community Activity lists -- read-only, JWT-gated endpoints with no
+ * Stash UI before this pass. All needed no bridge changes. Kept as a
+ * separate interface from [SyncApi] (which is already 400+ lines) rather
+ * than folded in, since this is a distinct feature area (discovery/recall,
+ * not account sync).
+ *
+ * [getTrendingTracks]/[getGlobalActivity] require the caller be signed in
+ * (JWT), but the *rows themselves* come only from users who separately
+ * opted into `share_listening_activity` via
+ * [com.stash.opusplayer.bridge.api.AuthApi.updatePrivacy] -- the caller's
+ * own opt-in status has no bearing on whether THEY can see these lists,
+ * only on whether THEIR OWN plays appear in other people's.
  * endpoints with no Stash UI before this pass (confirmed via grep: zero
  * prior references anywhere in this app). All three needed no bridge
  * changes. Kept as a separate interface from [SyncApi] (which is already
@@ -73,4 +111,16 @@ interface DiscoveryApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("api/artist/bio")
     suspend fun getArtistBio(@Query("name") name: String): Response<ArtistBioResponse>
+
+    /** [days]: trailing window (max 90), [limit]: max 100. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("social/discover")
+    suspend fun getTrendingTracks(
+        @Query("days") days: Int = 7,
+        @Query("limit") limit: Int = 20
+    ): Response<TrendingTracksResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("social/activity")
+    suspend fun getGlobalActivity(@Query("limit") limit: Int = 30): Response<GlobalActivityResponse>
 }
