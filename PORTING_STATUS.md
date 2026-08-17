@@ -94,17 +94,22 @@ confirmed by directory/endpoint survey — not touched by this branch:
   serves, but leaderboards, compatibility, activity feed, collaborative
   playlists, Listen Together (SharePlay has no Android equivalent to map to
   anyway), and profile comments/banners are still unbuilt.
-- **Cloud/account services**: **Account/Auth is now done** -- sign
-  in/register/logout, 2FA-login continuation, and display-name editing are
-  wired (`Settings -> Account & Server`, `BridgeAccountFragment` hosting
-  `BridgeSettingsScreen`) against the exact same `ios-bridge` endpoints
-  Lumisound's `AccountService` uses (`/auth/register|login|2fa/login|logout|me`),
-  with the same account working on both apps. Still unbuilt: backups, folder
-  backup, cross-device sync, subscriptions/feed, scrobbling (Last.fm/Libre.fm),
-  Discord RPC/webhook, push notifications, achievements, discover mix, weekly
-  mix, on-this-day, artist bio, change-password, delete-account, avatar
-  upload, session management UI (`GET/DELETE /auth/sessions` are modeled in
-  `AuthApi` but have no screen). `StreamingBrowseScreen` is also now reachable
+- **Cloud/account services**: **Account/Auth is now done, including full
+  account management** -- sign in/register/logout, 2FA-login continuation,
+  display-name editing, **session list/revoke, change password, delete
+  account, and avatar upload** are all wired (`Settings -> Account & Server`,
+  `BridgeAccountFragment` hosting `BridgeSettingsScreen`) against the exact
+  same `ios-bridge` endpoints Lumisound's `AccountService` uses, with the
+  same account working on both apps. Avatar upload/display goes through
+  `{baseUrl}/user/avatar/{userId}` directly (a raw-bytes GET/POST, not a
+  `avatar_url` JSON field -- that column is dead/unused server-side, same
+  as on iOS) with a client-side JPEG-recompress step for non-GIF images,
+  matching Lumisound's own client-side handling; animated GIF avatars show
+  only their first frame (no Coil/GIF-playback dependency in this project
+  to render the rest). Still unbuilt: backups, folder backup, cross-device
+  sync, subscriptions/feed, scrobbling (Last.fm/Libre.fm), Discord
+  RPC/webhook, push notifications, achievements, discover mix, weekly mix,
+  on-this-day, artist bio. `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
 - **Watch/widgets/system integration**: `PhoneWatchSync`, `WidgetDataView`,

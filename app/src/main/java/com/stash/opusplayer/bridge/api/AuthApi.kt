@@ -1,6 +1,7 @@
 package com.stash.opusplayer.bridge.api
 
 import com.google.gson.annotations.SerializedName
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -37,6 +38,17 @@ data class TwoFactorLoginRequest(
 /** Body for PUT /auth/me. `dateOfBirth` is immutable server-side once set (400 if already set), so it's omitted here. */
 data class UpdateMeRequest(
     @SerializedName("display_name") val displayName: String? = null
+)
+
+/** Body for POST /auth/change-password. Server force-logs-out every OTHER session on success (current one survives) -- see main.py's ChangePasswordRequest. */
+data class ChangePasswordRequest(
+    @SerializedName("current_password") val currentPassword: String,
+    @SerializedName("new_password") val newPassword: String
+)
+
+/** Body for POST /auth/delete-account -- password is confirmation, not a new value. Deletion is immediate, no separate confirmation-email/token flow server-side. */
+data class DeleteAccountRequest(
+    val password: String
 )
 
 // --- Response bodies ---------------------------------------------------------
@@ -98,7 +110,7 @@ data class SessionsResponse(
  * [com.stash.opusplayer.bridge.BridgeAuthInterceptor].
  *
  * NOT modeled in this pass (left for follow-up): /auth/2fa/setup|verify|disable,
- * /auth/change-password, /auth/delete-account, avatar upload, privacy settings.
+ * privacy settings.
  */
 interface AuthApi {
 
@@ -134,4 +146,29 @@ interface AuthApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @DELETE("auth/sessions/{tokenId}")
     suspend fun revokeSession(@Path("tokenId") tokenId: String): Response<Unit>
+
+    /** 204 on success. Every OTHER session gets force-logged-out server-side; the session making this call survives. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("auth/change-password")
+    suspend fun changePassword(@Body body: ChangePasswordRequest): Response<Unit>
+
+    /** 204 on success -- the user row (and everything FK-cascaded from it) is gone immediately, no confirmation-email flow. Caller must clear its local session afterward, same as Lumisound's client does. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("auth/delete-account")
+    suspend fun deleteAccount(@Body body: DeleteAccountRequest): Response<Unit>
+
+    /**
+     * Raw-body upload, NOT multipart -- confirmed against main.py: the route
+     * reads the POST body directly and sniffs JPEG/GIF by magic bytes,
+     * ignoring Content-Type entirely (same contract shape as
+     * [com.stash.opusplayer.bridge.api.FingerprintApi]). 15MB cap either
+     * format, enforced server-side (413 if exceeded). No response body
+     * beyond `{"ok": true}` -- callers don't need to parse it, a 2xx is
+     * success. `avatar_url` on [BridgeUser] is a dead/unused column; display
+     * is always `{baseUrl}/user/avatar/{userId}` fetched directly (public,
+     * no auth), not round-tripped through JSON -- see AvatarUrlProvider.
+     */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/avatar")
+    suspend fun uploadAvatar(@Body body: RequestBody): Response<Unit>
 }

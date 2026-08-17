@@ -1,22 +1,35 @@
 package com.stash.opusplayer.ui.compose.bridge
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonParser
 import com.stash.opusplayer.bridge.BridgeConfig
 import com.stash.opusplayer.bridge.BridgeTokenStore
 import com.stash.opusplayer.bridge.api.AuthApi
+import com.stash.opusplayer.bridge.api.BridgeSession
+import com.stash.opusplayer.bridge.api.ChangePasswordRequest
+import com.stash.opusplayer.bridge.api.DeleteAccountRequest
 import com.stash.opusplayer.bridge.api.LoginRequest
 import com.stash.opusplayer.bridge.api.RegisterRequest
 import com.stash.opusplayer.bridge.api.TwoFactorLoginRequest
 import com.stash.opusplayer.bridge.api.UpdateMeRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 
 /** Which auth form is currently shown in the logged-out state. */
@@ -60,11 +73,38 @@ data class BridgeSettingsUiState(
     // --- Profile (shown once logged in) ---
     val displayNameInput: String = "",
     val isSavingDisplayName: Boolean = false,
-    val displayNameJustSaved: Boolean = false
+    val displayNameJustSaved: Boolean = false,
+    /** Needed to build the avatar URL (`{baseUrl}/user/avatar/{userId}`) -- see AuthApi.uploadAvatar's doc comment for why this isn't a server-supplied URL field. */
+    val userId: String? = null,
+    val isUploadingAvatar: Boolean = false,
+    val avatarError: String? = null,
+    /** Bumped on every successful upload so the UI can cache-bust its avatar image request. */
+    val avatarVersion: Long = 0L,
+    /** `null` = no avatar set (a 404) or not loaded yet -- not distinguished, matching every other "absence" in this screen. Decoded via `BitmapFactory` -- an animated GIF avatar shows only its first frame, a deliberate simplification (this project has no Coil/GIF-playback dependency to render the rest). */
+    val avatarBitmap: android.graphics.Bitmap? = null,
+
+    // --- Sessions (device list) ---
+    val sessions: List<BridgeSession> = emptyList(),
+    val isLoadingSessions: Boolean = false,
+
+    // --- Change password ---
+    val currentPasswordInput: String = "",
+    val newPasswordInput: String = "",
+    val confirmPasswordInput: String = "",
+    val isChangingPassword: Boolean = false,
+    val passwordChangeError: String? = null,
+    val passwordChangeSucceeded: Boolean = false,
+
+    // --- Delete account ---
+    val deleteAccountPasswordInput: String = "",
+    val isDeletingAccount: Boolean = false,
+    val deleteAccountError: String? = null,
+    val showDeleteAccountConfirm: Boolean = false
 )
 
 @HiltViewModel
 class BridgeSettingsViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val bridgeConfig: BridgeConfig,
     private val tokenStore: BridgeTokenStore,
     private val authApi: AuthApi
@@ -93,12 +133,68 @@ class BridgeSettingsViewModel @Inject constructor(
         }
     }
 
-    /** Refreshes [BridgeSettingsUiState.displayNameInput] from the server -- called after login and once at startup if already signed in. */
+    /** Refreshes [BridgeSettingsUiState.displayNameInput]/[BridgeSettingsUiState.userId] from the server -- called after login and once at startup if already signed in. */
     private suspend fun refreshProfile() {
         val response = runCatching { authApi.me() }.getOrNull() ?: return
         if (!response.isSuccessful) return
         val user = response.body() ?: return
-        _uiState.update { it.copy(displayNameInput = user.displayName.orEmpty()) }
+        _uiState.update { it.copy(displayNameInput = user.displayName.orEmpty(), userId = user.id) }
+        loadSessions()
+        loadAvatar(user.id)
+    }
+
+    /**
+     * Fetches `{baseUrl}/user/avatar/{userId}` directly (public endpoint, no
+     * auth) rather than through the Retrofit/Hilt-provided client -- that
+     * client is built against a fixed placeholder base URL rewritten by an
+     * interceptor per-request, which is fine for JSON calls but awkward for
+     * a raw-bytes GET consumed by `BitmapFactory`; a plain `HttpURLConnection`
+     * against the actually-resolved [BridgeConfig] URL is simpler here.
+     */
+    private fun loadAvatar(userId: String) {
+        viewModelScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    val baseUrl = bridgeConfig.getBaseUrl().trimEnd('/')
+                    val connection = java.net.URL("$baseUrl/user/avatar/$userId")
+                        .openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout = 10_000
+                    connection.readTimeout = 10_000
+                    if (connection.responseCode == 200) {
+                        connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                    } else {
+                        null
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            _uiState.update { it.copy(avatarBitmap = bitmap) }
+        }
+    }
+
+    // --- Sessions ---------------------------------------------------------
+
+    fun loadSessions() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingSessions = true) }
+            val response = runCatching { authApi.listSessions() }.getOrNull()
+            val sessions = if (response?.isSuccessful == true) response.body()?.sessions.orEmpty() else emptyList()
+            _uiState.update { it.copy(isLoadingSessions = false, sessions = sessions) }
+        }
+    }
+
+    /** Revoking the current session logs this device out locally too -- the server accepts revoking your own current session same as any other. */
+    fun revokeSession(tokenId: String, isCurrent: Boolean) {
+        viewModelScope.launch {
+            val ok = runCatching { authApi.revokeSession(tokenId) }.getOrNull()?.isSuccessful == true
+            if (!ok) return@launch
+            if (isCurrent) {
+                logout()
+            } else {
+                loadSessions()
+            }
+        }
     }
 
     // --- Server configuration ---------------------------------------------
@@ -166,6 +262,22 @@ class BridgeSettingsViewModel @Inject constructor(
 
     fun onDisplayNameChanged(value: String) {
         _uiState.update { it.copy(displayNameInput = value, displayNameJustSaved = false) }
+    }
+
+    fun onCurrentPasswordChanged(value: String) {
+        _uiState.update { it.copy(currentPasswordInput = value, passwordChangeError = null, passwordChangeSucceeded = false) }
+    }
+
+    fun onNewPasswordChanged(value: String) {
+        _uiState.update { it.copy(newPasswordInput = value, passwordChangeError = null, passwordChangeSucceeded = false) }
+    }
+
+    fun onConfirmPasswordChanged(value: String) {
+        _uiState.update { it.copy(confirmPasswordInput = value, passwordChangeError = null, passwordChangeSucceeded = false) }
+    }
+
+    fun onDeleteAccountPasswordChanged(value: String) {
+        _uiState.update { it.copy(deleteAccountPasswordInput = value, deleteAccountError = null) }
     }
 
     // --- Auth actions ---------------------------------------------------------
@@ -327,6 +439,139 @@ class BridgeSettingsViewModel @Inject constructor(
         }
     }
 
+    /** Changing your password force-logs-out every OTHER session server-side -- this device stays signed in. */
+    fun changePassword() {
+        val state = _uiState.value
+        if (state.isChangingPassword) return
+        if (state.newPasswordInput.length < 8) {
+            _uiState.update { it.copy(passwordChangeError = "New password must be at least 8 characters.") }
+            return
+        }
+        if (state.newPasswordInput != state.confirmPasswordInput) {
+            _uiState.update { it.copy(passwordChangeError = "New passwords don't match.") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isChangingPassword = true, passwordChangeError = null, passwordChangeSucceeded = false) }
+            try {
+                val response = authApi.changePassword(
+                    ChangePasswordRequest(currentPassword = state.currentPasswordInput, newPassword = state.newPasswordInput)
+                )
+                if (response.isSuccessful) {
+                    _uiState.update {
+                        it.copy(
+                            isChangingPassword = false,
+                            passwordChangeSucceeded = true,
+                            currentPasswordInput = "",
+                            newPasswordInput = "",
+                            confirmPasswordInput = ""
+                        )
+                    }
+                    loadSessions()
+                } else {
+                    _uiState.update { it.copy(isChangingPassword = false, passwordChangeError = extractErrorMessage(response)) }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isChangingPassword = false, passwordChangeError = "Something went wrong. Check your connection.")
+                }
+            }
+        }
+    }
+
+    fun requestDeleteAccountConfirm() {
+        if (_uiState.value.deleteAccountPasswordInput.isBlank()) {
+            _uiState.update { it.copy(deleteAccountError = "Enter your password to confirm.") }
+            return
+        }
+        _uiState.update { it.copy(showDeleteAccountConfirm = true) }
+    }
+
+    fun cancelDeleteAccountConfirm() {
+        _uiState.update { it.copy(showDeleteAccountConfirm = false) }
+    }
+
+    /** Called only after the second (destructive) confirmation -- deletion is immediate server-side, no undo. */
+    fun confirmDeleteAccount() {
+        val state = _uiState.value
+        if (state.isDeletingAccount) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDeletingAccount = true, deleteAccountError = null) }
+            try {
+                val response = authApi.deleteAccount(DeleteAccountRequest(password = state.deleteAccountPasswordInput))
+                if (response.isSuccessful) {
+                    // The account (and this token) is already gone server-side -- clear local session unconditionally.
+                    tokenStore.clearToken()
+                    _uiState.update {
+                        BridgeSettingsUiState(
+                            baseUrlInput = it.baseUrlInput,
+                            apiKeyInput = it.apiKeyInput,
+                            isConfigured = it.isConfigured
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(isDeletingAccount = false, showDeleteAccountConfirm = false, deleteAccountError = extractErrorMessage(response))
+                    }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isDeletingAccount = false, showDeleteAccountConfirm = false, deleteAccountError = "Something went wrong. Check your connection.")
+                }
+            }
+        }
+    }
+
+    /**
+     * Reads [uri], sniffs GIF vs. anything-else by magic bytes (mirroring
+     * the bridge's own detection -- see AuthApi.uploadAvatar's doc comment),
+     * re-encodes non-GIF images to JPEG quality 80 (matching Lumisound's
+     * `jpegData(compressionQuality: 0.8)`) rather than uploading an
+     * arbitrary original, and uploads the raw bytes.
+     */
+    fun uploadAvatarFromUri(uri: Uri) {
+        if (_uiState.value.isUploadingAvatar) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingAvatar = true, avatarError = null) }
+            try {
+                val rawBytes = withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                } ?: throw IllegalStateException("Couldn't read the selected file.")
+
+                val isGif = rawBytes.size >= 6 &&
+                    (rawBytes.copyOfRange(0, 6).toString(Charsets.US_ASCII) == "GIF87a" ||
+                        rawBytes.copyOfRange(0, 6).toString(Charsets.US_ASCII) == "GIF89a")
+
+                val (uploadBytes, mediaType) = if (isGif) {
+                    rawBytes to "image/gif"
+                } else {
+                    val jpegBytes = withContext(Dispatchers.Default) {
+                        val bitmap = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+                            ?: throw IllegalStateException("That doesn't look like a valid image.")
+                        val out = ByteArrayOutputStream()
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                        bitmap.recycle()
+                        out.toByteArray()
+                    }
+                    jpegBytes to "image/jpeg"
+                }
+
+                val body = uploadBytes.toRequestBody(mediaType.toMediaType())
+                val response = authApi.uploadAvatar(body)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isUploadingAvatar = false, avatarVersion = it.avatarVersion + 1) }
+                    _uiState.value.userId?.let { loadAvatar(it) }
+                } else {
+                    _uiState.update { it.copy(isUploadingAvatar = false, avatarError = extractErrorMessage(response)) }
+                }
+            } catch (t: Exception) {
+                _uiState.update {
+                    it.copy(isUploadingAvatar = false, avatarError = t.message ?: "Couldn't upload that image.")
+                }
+            }
+        }
+    }
+
     fun logout() {
         if (_uiState.value.isLoggingOut) return
         viewModelScope.launch {
@@ -350,6 +595,18 @@ class BridgeSettingsViewModel @Inject constructor(
                     twoFactorCode = "",
                     displayNameInput = "",
                     displayNameJustSaved = false,
+                    userId = null,
+                    avatarError = null,
+                    avatarBitmap = null,
+                    sessions = emptyList(),
+                    currentPasswordInput = "",
+                    newPasswordInput = "",
+                    confirmPasswordInput = "",
+                    passwordChangeError = null,
+                    passwordChangeSucceeded = false,
+                    deleteAccountPasswordInput = "",
+                    deleteAccountError = null,
+                    showDeleteAccountConfirm = false,
                     authError = null,
                     authInfo = null
                 )
