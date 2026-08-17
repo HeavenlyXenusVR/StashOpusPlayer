@@ -25,6 +25,7 @@ import com.stash.opusplayer.ui.fragments.settings.DiscoveryFragment
 import com.stash.opusplayer.ui.fragments.settings.FolderBackupFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendActivityFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
+import com.stash.opusplayer.ui.fragments.settings.HelpFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.ListeningHeatmapFragment
@@ -66,6 +67,7 @@ class SettingsFragment : Fragment() {
         buildQuickActions(content)
         buildCoreNavigation(content)
         buildPrivacyControls(content)
+        buildHelpControls(content)
         buildUpdateControls(content)
 
         return scrollView
@@ -347,6 +349,22 @@ class SettingsFragment : Fragment() {
         }
         if (!AppLockManager.isBiometricAvailable(requireContext())) {
             appLockSwitch.isChecked = false
+        }
+    }
+
+    private fun buildHelpControls(parent: LinearLayout) {
+        val section = addSettingsSection(
+            parent,
+            "Help",
+            "A categorized guide to what this app can do, ported from Lumisound's own Help & Feature Guide."
+        )
+
+        addSettingsTile(
+            section,
+            title = "Help & Feature Guide",
+            summary = "Browse what every feature does, organized by category."
+        ) {
+            openSettingsScreen(HelpFragment(), "Help & Feature Guide")
         }
     }
 

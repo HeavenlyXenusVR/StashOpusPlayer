@@ -652,6 +652,22 @@ confirmed by directory/endpoint survey — not touched by this branch:
   flows (metadata-resolve into file-matching, duplicate-resolve +
   feedback into the duplicate finder).
 
+  **A Help & Feature Guide screen is now ported** too (`Settings ->
+  Help & Feature Guide`), ported from `SettingsHelpView.swift`'s
+  same two-level category-list -> topic-list navigation shape. This is
+  deliberately NOT a line-for-line transcription -- most of the iOS
+  source's ~90 topics describe iOS-platform mechanics with no Android
+  equivalent (Face ID/Touch ID, Home/Lock Screen widgets, SharePlay, the
+  iOS Keychain, Apple Music library scanning), so `HelpContent.kt` is an
+  independently-written, curated topic set covering only features
+  verified to actually exist in this app (cross-checked against
+  `SettingsFragment.kt`'s real tile list and everything shipped this
+  session), organized into 9 categories. Will grow incrementally as
+  features ship rather than trying to be exhaustive on day one. Static
+  content, no bridge dependency, no ViewModel -- kept as a flat Compose
+  island with internal list/detail state, matching this app's
+  established pattern for related sub-screens.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots
