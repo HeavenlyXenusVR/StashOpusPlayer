@@ -16,6 +16,7 @@ import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
 import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
 import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
+import com.stash.opusplayer.ui.fragments.settings.BlockedUsersFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.CloudPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscordVerificationFragment
@@ -263,6 +264,14 @@ class SettingsFragment : Fragment() {
             summary = "Most-active leaderboard and a recent-plays feed from your friends."
         ) {
             openSettingsScreen(FriendActivityFragment(), "Friend Activity")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Blocked Users",
+            summary = "Manage who you've blocked -- blocking hides profiles and removes any friendship in both directions."
+        ) {
+            openSettingsScreen(BlockedUsersFragment(), "Blocked Users")
         }
 
         addSettingsTile(

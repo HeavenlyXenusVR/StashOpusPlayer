@@ -3,6 +3,7 @@ package com.stash.opusplayer.bridge.api
 import com.google.gson.annotations.SerializedName
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
@@ -92,19 +93,31 @@ data class FriendsLeaderboardResponse(
     val leaderboard: List<FriendLeaderboardEntry> = emptyList()
 )
 
+/** One row of GET /api/social/block's `blocked` array (main.py ~L16115) -- same `_public_user_fields` shape as [BridgeFriend]'s identity subset. */
+data class BlockedUser(
+    @SerializedName("user_id") val userId: String,
+    val username: String,
+    @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null
+)
+
+data class BlockedUsersResponse(
+    val blocked: List<BlockedUser> = emptyList()
+)
+
 /**
  * A representative subset of `/api/social/…` — friends list/requests, a
- * presence heartbeat, and the friends activity feed/leaderboard. All
- * require the user's JWT (`get_current_user`), tagged
+ * presence heartbeat, the friends activity feed/leaderboard, and blocking.
+ * All require the user's JWT (`get_current_user`), tagged
  * `X-Bridge-Auth-Mode: user`.
  *
  * NOT modeled in this pass (left for follow-up): profile endpoints
  * (/api/social/profile/…, including avatar/banner upload and pinned tracks
  * — banner + guestbook comments ARE modeled, see
- * [com.stash.opusplayer.bridge.api.SocialProfileApi]), blocking
- * (/api/social/block*), friend nicknames/tags, presence-for-friends /
- * listening-together, compatibility, and discovery (/social/discover,
- * /social/similar-listeners, /social/trending-by-energy).
+ * [com.stash.opusplayer.bridge.api.SocialProfileApi]), friend nicknames/
+ * tags, presence-for-friends / listening-together, compatibility, and
+ * discovery (/social/discover, /social/similar-listeners,
+ * /social/trending-by-energy).
  */
 interface SocialApi {
 
@@ -144,4 +157,17 @@ interface SocialApi {
         @Query("days") days: Int = 7,
         @Query("limit") limit: Int = 10
     ): Response<FriendsLeaderboardResponse>
+
+    /** 400s on a self-block. Also tears down any existing friendship/pending request between the two, in both directions, server-side. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("api/social/block/{userId}")
+    suspend fun blockUser(@Path("userId") userId: String): Response<BridgeOkResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @DELETE("api/social/block/{userId}")
+    suspend fun unblockUser(@Path("userId") userId: String): Response<BridgeOkResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/social/block")
+    suspend fun getBlockedUsers(): Response<BlockedUsersResponse>
 }

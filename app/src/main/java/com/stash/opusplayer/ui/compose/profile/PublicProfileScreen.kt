@@ -71,6 +71,11 @@ fun PublicProfileScreen(
 
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             when {
+                state.wasBlocked -> Text(
+                    text = "This profile isn't available.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 state.isLoading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 state.error != null -> Text(text = state.error!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 state.profile != null -> {
@@ -129,9 +134,26 @@ fun PublicProfileScreen(
                             onDeleteComment = viewModel::deleteComment
                         )
                     }
+
+                    if (profile.isFriend && !viewModel.isSelfProfile()) {
+                        Divider()
+                        TextButton(onClick = viewModel::requestBlockConfirm, enabled = !state.isBlocking) {
+                            Text("Block User", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
         }
+    }
+
+    if (state.showBlockConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::cancelBlockConfirm,
+            title = { Text("Block this user?") },
+            text = { Text("You'll no longer see each other's profiles, and any friendship or pending request will be removed.") },
+            confirmButton = { TextButton(onClick = viewModel::confirmBlock) { Text("Block", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = viewModel::cancelBlockConfirm) { Text("Cancel") } }
+        )
     }
 }
 

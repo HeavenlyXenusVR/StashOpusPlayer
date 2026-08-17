@@ -265,6 +265,19 @@ confirmed by directory/endpoint survey — not touched by this branch:
   avatar-frame/avatar-decoration/profile-effect customization -- the
   endpoint returns all of that too, but only the fields this screen
   actually reads are modeled (see `PublicSocialProfile`'s doc comment).
+
+  **User blocking is now ported** too (`POST`/`DELETE /api/social/block/{id}`,
+  `GET /api/social/block` for `Settings -> Blocked Users`). A "Block
+  User" button appears on a friend's profile screen (never your own,
+  never a non-friend -- matches `PublicProfileView.swift`'s own gating
+  exactly), confirms, then blocks: the server tears down any
+  friendship/pending request in both directions and makes the two
+  profiles mutually invisible (`GET /api/social/profile/{id}` 404s for
+  a blocked-either-direction pair, same as "not found"), which this
+  client surfaces as a plain "This profile isn't available" message
+  rather than an error. `Settings -> Blocked Users` lists everyone
+  you've blocked with a per-row Unblock action, ported from Lumisound's
+  `BlockedUsersView`.
   `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.

@@ -10,6 +10,7 @@ import com.stash.opusplayer.bridge.BridgeTokenStore
 import com.stash.opusplayer.bridge.api.PostProfileCommentRequest
 import com.stash.opusplayer.bridge.api.ProfileComment
 import com.stash.opusplayer.bridge.api.PublicSocialProfile
+import com.stash.opusplayer.bridge.api.SocialApi
 import com.stash.opusplayer.bridge.api.SocialProfileApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,20 +28,21 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * Backs [PublicProfileScreen], ported from Lumisound's `ProfileView.swift`/
- * `PublicProfileView.swift`. Only the identity + banner + guestbook slice
- * of that combined view -- bio/accent-color editing, badges, pinned
- * tracks, top genres/artists, listening streak, and visitor stats are all
- * out of scope for this pass (see [PublicSocialProfile]'s doc comment).
+ * `PublicProfileView.swift`. Covers identity + banner + guestbook +
+ * badges/streak + blocking -- bio/accent-color editing, pinned tracks, top
+ * genres/artists, and visitor stats are still out of scope (see
+ * [PublicSocialProfile]'s doc comment).
  *
- * "Self view" (own profile, with banner edit controls) is detected by
- * comparing the loaded profile's username against
- * [BridgeTokenStore.getUsername] -- this app has no stored user id to
- * compare against directly, only the username cached at login.
+ * "Self view" (own profile, with banner edit controls, and never a Block
+ * User button) is detected by comparing the loaded profile's username
+ * against [BridgeTokenStore.getUsername] -- this app has no stored user id
+ * to compare against directly, only the username cached at login.
  */
 @HiltViewModel
 class PublicProfileViewModel @Inject constructor(
     @ApplicationContext private val appContext: android.content.Context,
     private val socialProfileApi: SocialProfileApi,
+    private val socialApi: SocialApi,
     private val bridgeConfig: BridgeConfig,
     private val tokenStore: BridgeTokenStore
 ) : ViewModel() {
@@ -59,7 +61,11 @@ class PublicProfileViewModel @Inject constructor(
         val newCommentBody: String = "",
         val isPostingComment: Boolean = false,
         val commentError: String? = null,
-        val deletingCommentId: String? = null
+        val deletingCommentId: String? = null,
+
+        val isBlocking: Boolean = false,
+        val showBlockConfirm: Boolean = false,
+        val wasBlocked: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -219,6 +225,37 @@ class PublicProfileViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { socialProfileApi.deleteProfileComment(commentId) }
             _uiState.update { it.copy(deletingCommentId = null) }
+        }
+    }
+
+    // --- Blocking -----------------------------------------------------------
+
+    fun requestBlockConfirm() {
+        _uiState.update { it.copy(showBlockConfirm = true) }
+    }
+
+    fun cancelBlockConfirm() {
+        _uiState.update { it.copy(showBlockConfirm = false) }
+    }
+
+    /**
+     * Blocking tears down any friendship/pending request server-side and
+     * makes the profile mutually invisible (blocked-either-direction is
+     * treated as "not found" by `GET /api/social/profile/{id}`) -- matches
+     * `PublicProfileView.swift`'s own behavior of reloading the profile
+     * after a block, which then shows its "profile isn't available" state.
+     * [UiState.wasBlocked] drives that same fallback here.
+     */
+    fun confirmBlock() {
+        val userId = loadedUserId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBlocking = true, showBlockConfirm = false) }
+            val response = runCatching { socialApi.blockUser(userId) }.getOrNull()
+            if (response?.isSuccessful == true) {
+                _uiState.update { it.copy(isBlocking = false, wasBlocked = true, profile = null) }
+            } else {
+                _uiState.update { it.copy(isBlocking = false, error = "Couldn't block that user.") }
+            }
         }
     }
 }
