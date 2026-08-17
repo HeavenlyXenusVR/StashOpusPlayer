@@ -220,10 +220,29 @@ confirmed by directory/endpoint survey — not touched by this branch:
   cloud music library" API family -- `/user/music/search|upload|stream|
   artwork|metadata|recommendations|smart-playlists` -- that this app
   doesn't model at all yet; discovered while scoping weekly mix, bigger
-  than a one-off addition), and the social profile bundle (leaderboards,
-  activity feed, profile comments/banners -- bridge-ready but no Swift
-  UI reference for two of the four, better bundled as a dedicated chunk
-  than added one-off). `StreamingBrowseScreen` is also now reachable
+  than a one-off addition).
+
+  **Profile banner + guestbook comments are now ported** too (tap a
+  friend in `Settings -> Friends`, or `Settings -> Account & Server ->
+  View My Public Profile` for your own). A deliberately trimmed slice
+  of Lumisound's combined `ProfileView.swift`/`PublicProfileView.swift`:
+  identity (username/display name/bio/member-since), a banner image
+  (upload/remove when viewing your own profile -- raw-bytes POST/DELETE
+  `/api/social/profile/banner`, GIF-sniffed and JPEG-recompressed on
+  upload exactly like the existing avatar upload path, GET treated the
+  same way avatar GET is: any non-200 means "no banner", not an error),
+  and a guestbook (`GET/POST /api/social/profile/{id}/comments`,
+  `DELETE /api/social/profile/comments/{id}`) with the same permission
+  rules the server enforces -- posting requires being friends and never
+  on your own profile, deleting requires being the comment's author or
+  the profile owner. **Not built in this pass**: badges, pinned tracks,
+  top genres/artists, listening streak, visitor stats, accent-color/
+  glow/avatar-frame/avatar-decoration/profile-effect customization,
+  activity feed, and leaderboard -- the public profile endpoint returns
+  all of that too, but only the fields this screen actually reads are
+  modeled (see `PublicSocialProfile`'s doc comment); the rest is real
+  future scope, not silently dropped.
+  `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
 

@@ -22,7 +22,11 @@ class FriendsHostFragment : NavigableSettingsFragment() {
     ): View = ComposeView(requireContext()).apply {
         setContent {
             MaterialTheme {
-                FriendsScreen()
+                FriendsScreen(
+                    onFriendClick = { userId ->
+                        navigateToSettingsScreen(PublicProfileFragment.newInstance(userId))
+                    }
+                )
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.stash.opusplayer.ui.compose.social
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,7 +45,10 @@ import com.stash.opusplayer.bridge.api.FriendRequestEntry
  * app-lifecycle concern, not this screen's job.
  */
 @Composable
-fun FriendsScreen(viewModel: FriendsViewModel = hiltViewModel()) {
+fun FriendsScreen(
+    viewModel: FriendsViewModel = hiltViewModel(),
+    onFriendClick: (String) -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -71,7 +75,8 @@ fun FriendsScreen(viewModel: FriendsViewModel = hiltViewModel()) {
                 onUsernameChange = viewModel::onSendUsernameChange,
                 onSendRequest = viewModel::sendFriendRequest,
                 onAccept = viewModel::acceptRequest,
-                onDecline = viewModel::declineRequest
+                onDecline = viewModel::declineRequest,
+                onFriendClick = onFriendClick
             )
         }
     }
@@ -120,7 +125,8 @@ private fun FriendsContent(
     onUsernameChange: (String) -> Unit,
     onSendRequest: () -> Unit,
     onAccept: (String) -> Unit,
-    onDecline: (String) -> Unit
+    onDecline: (String) -> Unit,
+    onFriendClick: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -192,7 +198,7 @@ private fun FriendsContent(
             }
         } else {
             items(friends, key = { it.userId }) { friend ->
-                FriendRow(friend)
+                FriendRow(friend, onClick = { onFriendClick(friend.userId) })
             }
         }
     }
@@ -244,8 +250,8 @@ private fun SendFriendRequestCard(
 }
 
 @Composable
-private fun FriendRow(friend: BridgeFriend) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun FriendRow(friend: BridgeFriend, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = friend.displayName?.takeIf { it.isNotBlank() } ?: friend.username,

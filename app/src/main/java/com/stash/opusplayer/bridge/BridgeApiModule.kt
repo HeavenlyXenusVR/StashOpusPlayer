@@ -4,6 +4,7 @@ import com.google.gson.GsonBuilder
 import com.stash.opusplayer.bridge.api.AuthApi
 import com.stash.opusplayer.bridge.api.FingerprintApi
 import com.stash.opusplayer.bridge.api.SocialApi
+import com.stash.opusplayer.bridge.api.SocialProfileApi
 import com.stash.opusplayer.bridge.api.DiscordVerificationApi
 import com.stash.opusplayer.bridge.api.DiscordWebhookApi
 import com.stash.opusplayer.bridge.api.DiscoveryApi
@@ -122,4 +123,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideFolderBackupApi(retrofit: Retrofit): FolderBackupApi = retrofit.create(FolderBackupApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSocialProfileApi(retrofit: Retrofit): SocialProfileApi = retrofit.create(SocialProfileApi::class.java)
 }

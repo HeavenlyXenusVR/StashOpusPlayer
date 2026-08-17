@@ -34,7 +34,11 @@ class BridgeAccountFragment : NavigableSettingsFragment() {
     ): View = ComposeView(requireContext()).apply {
         setContent {
             MaterialTheme {
-                BridgeSettingsScreen()
+                BridgeSettingsScreen(
+                    onViewMyProfile = { userId ->
+                        navigateToSettingsScreen(PublicProfileFragment.newInstance(userId))
+                    }
+                )
             }
         }
     }

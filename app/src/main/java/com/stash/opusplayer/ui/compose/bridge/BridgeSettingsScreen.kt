@@ -51,12 +51,14 @@ import com.stash.opusplayer.bridge.api.BridgeSession
 @Composable
 fun BridgeSettingsScreen(
     modifier: Modifier = Modifier,
-    viewModel: BridgeSettingsViewModel = hiltViewModel()
+    viewModel: BridgeSettingsViewModel = hiltViewModel(),
+    onViewMyProfile: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     BridgeSettingsContent(
         state = uiState,
+        onViewMyProfile = onViewMyProfile,
         onBaseUrlChanged = viewModel::onBaseUrlChanged,
         onApiKeyChanged = viewModel::onApiKeyChanged,
         onSaveConfig = viewModel::saveServerConfig,
@@ -92,6 +94,7 @@ fun BridgeSettingsScreen(
 @Composable
 private fun BridgeSettingsContent(
     state: BridgeSettingsUiState,
+    onViewMyProfile: (String) -> Unit,
     onBaseUrlChanged: (String) -> Unit,
     onApiKeyChanged: (String) -> Unit,
     onSaveConfig: () -> Unit,
@@ -170,6 +173,12 @@ private fun BridgeSettingsContent(
                 error = state.avatarError,
                 onUpload = onUploadAvatar
             )
+
+            state.userId?.let { userId ->
+                TextButton(onClick = { onViewMyProfile(userId) }) {
+                    Text("View My Public Profile")
+                }
+            }
 
             Divider()
             SessionsSection(
