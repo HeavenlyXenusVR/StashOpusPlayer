@@ -728,6 +728,24 @@ confirmed by directory/endpoint survey — not touched by this branch:
   -- PUT only checks the key is non-blank, no live check against the
   AcoustID API itself.
 
+  **Discord Rich Presence setup is now ported** too (`Settings ->
+  Discord Rich Presence`), ported from `DiscordRichPresenceView.swift`.
+  A third, distinct Discord integration -- separate from the
+  already-shipped Discord account verification and Discord Webhook
+  screens, no shared tables/endpoints with either. The actual Rich
+  Presence IPC runs on a desktop daemon the user installs separately
+  (`discord-rpc` on GitHub, `./install.sh <token>`); this app's role is
+  only to mint a one-time setup token (`POST /user/rpc-token` -- despite
+  the name, a literal 365-day auth session token labeled "Discord RPC
+  Bridge", revocable in Sessions like any other device) and manage the
+  enabled/custom-Discord-Application config the daemon reads
+  (`GET`/`PUT`/`DELETE /user/discord-rpc-config`). The enable toggle is
+  gated behind having a verified Discord account, matching iOS -- purely
+  a client-side UX choice, confirmed no server-side dependency exists
+  between the two features' endpoints. "Switch Back to Shared App" sends
+  an explicit empty client ID (distinct from omitting the field), which
+  the server treats as "clear the override."
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

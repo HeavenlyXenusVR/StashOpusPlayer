@@ -20,6 +20,7 @@ import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BlockedUsersFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.CloudPlaylistsFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscordRpcFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscordVerificationFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscordWebhookFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscoveryFragment
@@ -235,6 +236,14 @@ class SettingsFragment : Fragment() {
             summary = "Prove you own a specific Discord account -- separate from the Now Playing webhook."
         ) {
             openSettingsScreen(DiscordVerificationFragment(), "Discord Verification")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discord Rich Presence",
+            summary = "Show what you're playing as your Discord status, via a small desktop program you install separately."
+        ) {
+            openSettingsScreen(DiscordRpcFragment(), "Discord Rich Presence")
         }
 
         addSettingsTile(
