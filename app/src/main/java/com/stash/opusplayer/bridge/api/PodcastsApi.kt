@@ -8,6 +8,7 @@ import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -50,15 +51,42 @@ data class PodcastEpisode(
 )
 
 /**
- * Podcast subscriptions + episode listing, ported from the podcast slice of
- * Lumisound's account services (a full podcast subsystem also including
- * chapters, per-episode playback-progress sync, OPML import/export, and
- * search/trending discovery -- none of that is modeled here, this pass
- * covers subscribe/list/mute/unsubscribe + episode browsing + direct
- * playback only). Distinct from -- and unrelated to -- artist channel
- * subscriptions ([SubscriptionsApi]): this is RSS-feed-based, not
- * YouTube-channel-based, and episodes play from a direct enclosure URL
- * with no yt-dlp/bridge-stream-resolve step at all.
+ * Body for PUT /user/podcasts/episode-progress (`PodcastEpisodeProgressRequest`,
+ * main.py ~L17309). [positionSeconds]/[durationSeconds] are floats
+ * server-side but always sent as whole seconds from this client.
+ * [completed] should be computed client-side as `duration > 0 &&
+ * position >= duration - 5`, matching Lumisound's own
+ * `pushPodcastProgressIfNeeded` exactly.
+ */
+data class PodcastEpisodeProgressRequest(
+    @SerializedName("feed_url") val feedUrl: String,
+    @SerializedName("episode_guid") val episodeGuid: String,
+    val title: String? = null,
+    @SerializedName("position_seconds") val positionSeconds: Double = 0.0,
+    @SerializedName("duration_seconds") val durationSeconds: Double = 0.0,
+    val completed: Boolean = false
+)
+
+/** One row of GET /user/podcasts/episode-progress (main.py ~L17579) -- either scoped to one [feedUrl] or, if omitted, every in-progress episode across all subscriptions (the Continue Listening case), newest-updated first. [title] is a cached snapshot from whenever progress was last saved, not re-fetched from the feed. */
+data class PodcastEpisodeProgress(
+    @SerializedName("episode_guid") val episodeGuid: String,
+    @SerializedName("feed_url") val feedUrl: String,
+    val title: String? = null,
+    @SerializedName("position_seconds") val positionSeconds: Double = 0.0,
+    @SerializedName("duration_seconds") val durationSeconds: Double = 0.0,
+    val completed: Boolean = false,
+    @SerializedName("updated_at") val updatedAt: String? = null
+)
+
+/**
+ * Podcast subscriptions + episode listing + playback-progress sync, ported
+ * from the podcast slice of Lumisound's account services (a full podcast
+ * subsystem also including chapters, OPML import/export, and search/
+ * trending discovery -- none of that is modeled here). Distinct from --
+ * and unrelated to -- artist channel subscriptions ([SubscriptionsApi]):
+ * this is RSS-feed-based, not YouTube-channel-based, and episodes play
+ * from a direct enclosure URL with no yt-dlp/bridge-stream-resolve step
+ * at all.
  */
 interface PodcastsApi {
 
@@ -88,4 +116,16 @@ interface PodcastsApi {
         @Query("feed_url") feedUrl: String,
         @Query("limit") limit: Int = 50
     ): Response<List<PodcastEpisode>>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("user/podcasts/episode-progress")
+    suspend fun updateEpisodeProgress(@Body body: PodcastEpisodeProgressRequest): Response<Unit>
+
+    /** [feedUrl] null fetches the cross-feed "in progress everywhere" view instead of one feed's progress -- see [PodcastEpisodeProgress]'s doc comment. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/podcasts/episode-progress")
+    suspend fun getEpisodeProgress(
+        @Query("feed_url") feedUrl: String? = null,
+        @Query("limit") limit: Int = 50
+    ): Response<List<PodcastEpisodeProgress>>
 }

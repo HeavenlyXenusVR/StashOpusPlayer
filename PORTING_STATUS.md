@@ -286,11 +286,29 @@ confirmed by directory/endpoint survey — not touched by this branch:
   sourced track list elsewhere in this app, which all need the
   search-or-discover -> resolve -> play two-step. Deliberately trimmed
   from the bridge's full podcast subsystem: chapters
-  (`GET /user/podcasts/chapters`), per-episode playback-progress sync
-  (`PUT`/`GET /user/podcasts/episode-progress`), OPML import/export,
-  and search/trending discovery (`/podcasts/search`,
-  `/podcasts/trending`) are all real, separately-portable features not
-  attempted in this pass.
+  (`GET /user/podcasts/chapters`), OPML import/export, and search/
+  trending discovery (`/podcasts/search`, `/podcasts/trending`) are
+  all real, separately-portable features not attempted in this pass.
+
+  **Playback-progress sync (resume-where-you-left-off) was added in a
+  follow-up pass** (`PUT`/`GET /user/podcasts/episode-progress`).
+  Pushes position every 5 seconds during playback, matching
+  Lumisound's own cadence exactly; shows "Resume at M:SS" or "Played"
+  on episode rows once progress exists; seeks to the saved position
+  automatically when replaying an in-progress episode. A podcast
+  episode is identified purely by marker fields on the plain `Song`
+  object handed to the player (`genre = "Podcast"`, `album = <feed
+  URL>`, `relativePath = <episode guid>`) -- mirroring Lumisound's own
+  identical reuse-the-Song-model trick, since neither platform's
+  `Song`/track model has dedicated podcast fields. **Scoped to "while
+  the Podcasts screen is open," not app-wide background tracking**:
+  `MusicPlayerManager` has no steady internal tick this ViewModel
+  could piggyback on the way Lumisound's own position timer (ticking
+  every 0.5s regardless of visible screen) does -- this app's position
+  updates are event-driven, not timer-driven. A future pass could move
+  this into `MusicPlayerManager` itself for true background tracking;
+  this pass keeps the change fully additive and confined to one
+  screen's ViewModel.
 
   Still unbuilt: cross-device sync, push notifications, weekly mix
   (blocked on an entirely separate "personal cloud music library" API

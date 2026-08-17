@@ -167,6 +167,7 @@ private fun EpisodesContent(
                 EpisodeRow(
                     episode = episode,
                     isPlaying = state.playingGuid == episode.guid,
+                    progress = state.progressByGuid[episode.guid],
                     onClick = { viewModel.playEpisode(episode) }
                 )
                 Divider()
@@ -176,7 +177,12 @@ private fun EpisodesContent(
 }
 
 @Composable
-private fun EpisodeRow(episode: PodcastEpisode, isPlaying: Boolean, onClick: () -> Unit) {
+private fun EpisodeRow(
+    episode: PodcastEpisode,
+    isPlaying: Boolean,
+    progress: com.stash.opusplayer.bridge.api.PodcastEpisodeProgress?,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -192,6 +198,21 @@ private fun EpisodeRow(episode: PodcastEpisode, isPlaying: Boolean, onClick: () 
             val subtitle = listOfNotNull(episode.publishedAt?.take(10), durationText).joinToString(" · ")
             if (subtitle.isNotBlank()) {
                 Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            when {
+                progress?.completed == true -> Text(
+                    text = "Played",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                progress != null && progress.positionSeconds > 5 -> {
+                    val pos = progress.positionSeconds.toInt()
+                    Text(
+                        text = "Resume at %d:%02d".format(pos / 60, pos % 60),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
         if (isPlaying) {
