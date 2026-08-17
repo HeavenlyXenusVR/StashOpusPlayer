@@ -196,12 +196,34 @@ confirmed by directory/endpoint survey — not touched by this branch:
   authorization code or an exchanged token, only the final linked/
   not-linked state.
 
-  Still unbuilt: folder backup, cross-device sync, subscriptions/feed,
-  push notifications, weekly mix (blocked on an entirely separate
-  "personal cloud music library" API family -- `/user/music/search|
-  upload|stream|artwork|metadata|recommendations|smart-playlists` --
-  that this app doesn't model at all yet; discovered while scoping
-  weekly mix, bigger than a one-off addition). `StreamingBrowseScreen` is also now reachable
+  **Folder Backups are now ported** too (`Settings -> Folder Backups`,
+  `PUT`/`GET /user/folder-backups`, `com.stash.opusplayer.backup.FolderBackupService`).
+  Wholesale replace-on-push, metadata-only -- mirrors
+  `AccountService+FolderBackup.swift`'s exact scope, including its
+  notable absence of any restore/redownload action: there's no
+  dedicated restore UI on iOS either, only push + fetch, since iOS's
+  `source_track_id` field needs a durable per-track source id this
+  client doesn't persist anywhere (`Song`/`SongEntity` have no such
+  column -- only transiently known inside `VideoDownloadManager` at
+  download time). Every pushed track is informational only (title/
+  artist/duration for reference after a reinstall), never auto-
+  redownloadable -- a real limitation, honestly surfaced in the viewer
+  screen's own copy, not a silent gap. Pushed (2s debounced) whenever a
+  watched folder is added/removed in Library Settings, and after every
+  library rescan (`LibraryRescanWorker`). Covers both plain-path
+  folders and SAF tree folders (Android has no "relative to Documents"
+  path concept to mirror iOS's `folder_path` with, so tree folders are
+  keyed by their `DocumentFile` display name instead).
+
+  Still unbuilt: cross-device sync, subscriptions/feed, push
+  notifications, weekly mix (blocked on an entirely separate "personal
+  cloud music library" API family -- `/user/music/search|upload|stream|
+  artwork|metadata|recommendations|smart-playlists` -- that this app
+  doesn't model at all yet; discovered while scoping weekly mix, bigger
+  than a one-off addition), and the social profile bundle (leaderboards,
+  activity feed, profile comments/banners -- bridge-ready but no Swift
+  UI reference for two of the four, better bundled as a dedicated chunk
+  than added one-off). `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
 

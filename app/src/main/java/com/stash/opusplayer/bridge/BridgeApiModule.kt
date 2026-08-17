@@ -7,6 +7,7 @@ import com.stash.opusplayer.bridge.api.SocialApi
 import com.stash.opusplayer.bridge.api.DiscordVerificationApi
 import com.stash.opusplayer.bridge.api.DiscordWebhookApi
 import com.stash.opusplayer.bridge.api.DiscoveryApi
+import com.stash.opusplayer.bridge.api.FolderBackupApi
 import com.stash.opusplayer.bridge.api.StreamingApi
 import com.stash.opusplayer.bridge.api.SyncApi
 import dagger.Module
@@ -117,4 +118,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideDiscordVerificationApi(retrofit: Retrofit): DiscordVerificationApi = retrofit.create(DiscordVerificationApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideFolderBackupApi(retrofit: Retrofit): FolderBackupApi = retrofit.create(FolderBackupApi::class.java)
 }

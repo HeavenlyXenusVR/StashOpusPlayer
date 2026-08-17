@@ -40,6 +40,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
             requireContext().contentResolver.takePersistableUriPermission(uri, flags)
             MusicRepository(requireContext()).addCustomMusicFolderTreeUri(uri.toString())
             updateFolderSummary()
+            com.stash.opusplayer.backup.FolderBackupService.schedulePush(requireContext())
             Toast.makeText(
                 requireContext(),
                 "Folder added. Pull to refresh the library after a rescan.",
@@ -311,6 +312,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     )
                 }
                 updateFolderSummary()
+                com.stash.opusplayer.backup.FolderBackupService.schedulePush(requireContext())
                 Toast.makeText(requireContext(), "Folder removed.", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Close", null)

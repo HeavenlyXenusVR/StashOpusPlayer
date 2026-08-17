@@ -660,6 +660,36 @@ if (isValidAudioFile(name) || child.type?.startsWith("audio/") == true) {
         }
     }
 
+    /**
+     * One entry per watched folder (plain paths + SAF tree folders), for
+     * [com.stash.opusplayer.backup.FolderBackupService]'s push to
+     * `PUT /user/folder-backups`. Reuses the same scan paths
+     * [scanCustomFolders]/[scanDocumentTreeRecursive] already use for the
+     * library itself -- SAF tree folders are keyed by their
+     * [androidx.documentfile.provider.DocumentFile] display name (Android
+     * has no "relative to Documents" path concept to mirror iOS's
+     * `folder_path` with).
+     */
+    suspend fun getFolderBackupEntries(): List<Pair<String, List<Song>>> = withContext(Dispatchers.IO) {
+        val entries = mutableListOf<Pair<String, List<Song>>>()
+        getCustomMusicFolders().forEach { path ->
+            entries.add(path to getSongsInFolder(path))
+        }
+        getCustomMusicFolderTreeUris().forEach { uriStr ->
+            runCatching {
+                val treeUri = Uri.parse(uriStr)
+                val docTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+                if (docTree != null && docTree.isDirectory) {
+                    val label = docTree.name ?: uriStr
+                    val songs = mutableListOf<Song>()
+                    scanDocumentTreeRecursive(docTree, songs, label, label)
+                    entries.add(label to songs)
+                }
+            }
+        }
+        entries
+    }
+
     // Fast path: use MediaStore to list audio under primary storage tree URIs
     private suspend fun scanDocumentTreesFast(): List<Song> = withContext(Dispatchers.IO) {
         val result = mutableListOf<Song>()

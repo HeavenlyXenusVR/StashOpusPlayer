@@ -24,6 +24,7 @@ class LibraryRescanWorker(
             repo.refreshSongIndex() // MediaStore scan + persist to song index
             repo.scanCustomFolders() // SAF custom folders
             LibraryScanTracker.completeScan()
+            com.stash.opusplayer.backup.FolderBackupService.pushNow(applicationContext)
             Result.success()
         } catch (e: Exception) {
             LibraryScanTracker.completeScan()
