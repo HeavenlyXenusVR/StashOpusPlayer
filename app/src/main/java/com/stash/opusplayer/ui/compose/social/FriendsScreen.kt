@@ -81,7 +81,10 @@ fun FriendsScreen(
                 onAccept = viewModel::acceptRequest,
                 onDecline = viewModel::declineRequest,
                 onFriendClick = onFriendClick,
-                onEditFriend = viewModel::startEditingFriend
+                onEditFriend = viewModel::startEditingFriend,
+                suggestions = uiState.suggestions,
+                sendingSuggestionIds = uiState.sendingSuggestionIds,
+                onSendSuggestionRequest = viewModel::sendRequestToSuggestion
             )
         }
     }
@@ -151,7 +154,10 @@ private fun FriendsContent(
     onAccept: (String) -> Unit,
     onDecline: (String) -> Unit,
     onFriendClick: (String) -> Unit,
-    onEditFriend: (String) -> Unit
+    onEditFriend: (String) -> Unit,
+    suggestions: List<com.stash.opusplayer.bridge.api.FriendSuggestion>,
+    sendingSuggestionIds: Set<String>,
+    onSendSuggestionRequest: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -227,6 +233,19 @@ private fun FriendsContent(
                     friend,
                     onClick = { onFriendClick(friend.userId) },
                     onEditClick = { onEditFriend(friend.userId) }
+                )
+            }
+        }
+
+        if (suggestions.isNotEmpty()) {
+            item {
+                SectionHeader("People You May Know")
+            }
+            items(suggestions, key = { it.userId }) { suggestion ->
+                SuggestionRow(
+                    suggestion = suggestion,
+                    isSending = sendingSuggestionIds.contains(suggestion.userId),
+                    onSendRequest = { onSendSuggestionRequest(suggestion.userId) }
                 )
             }
         }
@@ -475,6 +494,38 @@ private fun OutgoingRequestRow(request: FriendRequestEntry) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun SuggestionRow(
+    suggestion: com.stash.opusplayer.bridge.api.FriendSuggestion,
+    isSending: Boolean,
+    onSendRequest: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = suggestion.displayName?.takeIf { it.isNotBlank() } ?: suggestion.username,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "${suggestion.mutualFriendCount} mutual friend${if (suggestion.mutualFriendCount == 1) "" else "s"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (isSending) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            } else {
+                Button(onClick = onSendRequest) { Text("Add") }
+            }
         }
     }
 }

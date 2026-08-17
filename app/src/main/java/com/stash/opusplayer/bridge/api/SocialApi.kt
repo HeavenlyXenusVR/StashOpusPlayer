@@ -124,6 +124,19 @@ data class MusicCompatibility(
     @SerializedName("shared_genres") val sharedGenres: List<String> = emptyList()
 )
 
+/** One row of GET /api/social/friends/suggestions's `suggestions` array (main.py ~L16135) -- other users who share at least one friend with the caller, ranked by mutual-friend count descending, excluding existing friends/pending requests/blocks. */
+data class FriendSuggestion(
+    @SerializedName("user_id") val userId: String,
+    val username: String,
+    @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    @SerializedName("mutual_friend_count") val mutualFriendCount: Int = 0
+)
+
+data class FriendSuggestionsResponse(
+    val suggestions: List<FriendSuggestion> = emptyList()
+)
+
 /** Body for PUT /api/social/friends/{friendId}/nickname (`FriendNicknameUpdate`, main.py ~L16686). Null or blank clears the nickname; max 60 chars server-side. Private to the caller -- never visible to the friend or anyone else. */
 data class FriendNicknameUpdate(
     val nickname: String? = null
@@ -236,4 +249,8 @@ interface SocialApi {
         @Path("userId") userId: String,
         @Path("tagName") tagName: String
     ): Response<BridgeOkResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/social/friends/suggestions")
+    suspend fun getFriendSuggestions(@Query("limit") limit: Int = 10): Response<FriendSuggestionsResponse>
 }

@@ -306,6 +306,16 @@ confirmed by directory/endpoint survey — not touched by this branch:
   exists, and any tags as small chips. `BridgeFriend` already carried
   `nickname`/`tags` fields from an earlier pass with nothing to
   populate them -- this chunk is what actually wires them up.
+
+  **Friend suggestions are now ported** too (`GET
+  /api/social/friends/suggestions`, `Settings -> Friends`, "People You
+  May Know" section). Mutual-friend suggestions -- other users who
+  share at least one friend with you, ranked by mutual-friend count,
+  automatically excluding existing friends, pending requests, and
+  blocks (all server-side). Each row shows the mutual-friend count and
+  a one-tap "Add" that reuses the same send-request plumbing as the
+  existing username-based flow, just by user id instead of typed
+  username; a sent suggestion disappears from the list immediately.
   `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.

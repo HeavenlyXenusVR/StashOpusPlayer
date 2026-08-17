@@ -7,6 +7,7 @@ import com.stash.opusplayer.bridge.api.BridgeFriend
 import com.stash.opusplayer.bridge.api.FriendNicknameUpdate
 import com.stash.opusplayer.bridge.api.FriendRequestCreate
 import com.stash.opusplayer.bridge.api.FriendRequestEntry
+import com.stash.opusplayer.bridge.api.FriendSuggestion
 import com.stash.opusplayer.bridge.api.FriendTagCreate
 import com.stash.opusplayer.bridge.api.SocialApi
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,7 +47,10 @@ data class FriendsUiState(
     val editNicknameInput: String = "",
     val editNewTagInput: String = "",
     val allTagNames: List<String> = emptyList(),
-    val isSavingEdit: Boolean = false
+    val isSavingEdit: Boolean = false,
+
+    val suggestions: List<FriendSuggestion> = emptyList(),
+    val sendingSuggestionIds: Set<String> = emptySet()
 )
 
 @HiltViewModel
@@ -98,6 +102,36 @@ class FriendsViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = "Failed to load friends: ${e.message ?: "unknown error"}")
                 }
+            }
+        }
+        loadSuggestions()
+    }
+
+    /** Best-effort, separate from the main [refresh] load so a suggestions failure never blocks the friends/requests list itself from showing. */
+    private fun loadSuggestions() {
+        viewModelScope.launch {
+            val response = runCatching { socialApi.getFriendSuggestions() }.getOrNull()
+            if (response?.isSuccessful == true) {
+                _uiState.update { it.copy(suggestions = response.body()?.suggestions.orEmpty()) }
+            }
+        }
+    }
+
+    /** Sends a request from a "People You May Know" suggestion row -- reuses the same endpoint as [sendFriendRequest], just by id instead of typed username. */
+    fun sendRequestToSuggestion(userId: String) {
+        if (_uiState.value.sendingSuggestionIds.contains(userId)) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(sendingSuggestionIds = it.sendingSuggestionIds + userId) }
+            try {
+                val response = socialApi.sendFriendRequest(FriendRequestCreate(toUserId = userId))
+                if (response.isSuccessful && response.body()?.ok == true) {
+                    _uiState.update { it.copy(suggestions = it.suggestions.filterNot { s -> s.userId == userId }) }
+                    refreshRequestsOnly()
+                }
+            } catch (_: Exception) {
+                // Best-effort; the row's spinner just clears and the button reappears for a retry.
+            } finally {
+                _uiState.update { it.copy(sendingSuggestionIds = it.sendingSuggestionIds - userId) }
             }
         }
     }
