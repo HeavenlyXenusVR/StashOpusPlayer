@@ -15,6 +15,7 @@ import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
 import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
+import com.stash.opusplayer.ui.fragments.settings.AcoustIdApiKeyFragment
 import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BlockedUsersFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
@@ -202,6 +203,14 @@ class SettingsFragment : Fragment() {
             summary = "Use your own YouTube Data API key so full playlists resolve without a cap."
         ) {
             openSettingsScreen(YoutubeApiKeyFragment(), "YouTube API Key")
+        }
+
+        addSettingsTile(
+            section,
+            title = "AcoustID API Key",
+            summary = "Use your own free AcoustID key to enable Identify Track fingerprint lookups."
+        ) {
+            openSettingsScreen(AcoustIdApiKeyFragment(), "AcoustID API Key")
         }
 
         addSettingsTile(

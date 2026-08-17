@@ -1,6 +1,7 @@
 package com.stash.opusplayer.bridge
 
 import com.google.gson.GsonBuilder
+import com.stash.opusplayer.bridge.api.AcoustIdApiKeyApi
 import com.stash.opusplayer.bridge.api.AuthApi
 import com.stash.opusplayer.bridge.api.FingerprintApi
 import com.stash.opusplayer.bridge.api.SocialApi
@@ -162,4 +163,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideYoutubeApiKeyApi(retrofit: Retrofit): YoutubeApiKeyApi = retrofit.create(YoutubeApiKeyApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideAcoustIdApiKeyApi(retrofit: Retrofit): AcoustIdApiKeyApi = retrofit.create(AcoustIdApiKeyApi::class.java)
 }

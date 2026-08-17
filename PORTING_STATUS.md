@@ -718,6 +718,16 @@ confirmed by directory/endpoint survey — not touched by this branch:
   a manual "Check for Key Exposure" button instead, since a background
   poller is more surface area than this chunk's scope justifies.
 
+  **AcoustID API Key is now ported** too (`Settings -> AcoustID API
+  Key`), ported from `SettingsView+AcoustIDAPIKeyRows.swift`. A
+  bring-your-own-key override for AcoustID fingerprint lookups --
+  `com.stash.opusplayer.identify.AcoustIdService` already uses a
+  bridge-side default key, this just adds the personal-key override UI.
+  Simpler than the YouTube/yt-dlp-cookies screens: no validate or
+  exposure-check endpoint exists for this one server-side, matching iOS
+  -- PUT only checks the key is non-blank, no live check against the
+  AcoustID API itself.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots
