@@ -15,13 +15,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -227,15 +229,15 @@ private fun CloudPlaylistDetailContent(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
+                            RoleToggleButton(
+                                label = "Editor",
                                 selected = state.newCollaboratorIsEditor,
-                                onClick = { onNewCollaboratorRoleChanged(true) },
-                                label = { Text("Editor") }
+                                onClick = { onNewCollaboratorRoleChanged(true) }
                             )
-                            FilterChip(
+                            RoleToggleButton(
+                                label = "Viewer",
                                 selected = !state.newCollaboratorIsEditor,
-                                onClick = { onNewCollaboratorRoleChanged(false) },
-                                label = { Text("Viewer") }
+                                onClick = { onNewCollaboratorRoleChanged(false) }
                             )
                         }
                         Button(
@@ -275,6 +277,15 @@ private fun CloudPlaylistDetailContent(
             confirmButton = { TextButton(onClick = onConfirmLeavePlaylist) { Text("Leave", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = onCancelLeaveConfirm) { Text("Cancel") } }
         )
+    }
+}
+
+@Composable
+private fun RoleToggleButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    if (selected) {
+        Button(onClick = onClick) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick, colors = ButtonDefaults.outlinedButtonColors()) { Text(label) }
     }
 }
 
