@@ -172,6 +172,26 @@ confirmed by directory/endpoint survey — not touched by this branch:
   by play count over the last 7 days; Community is a flat "what
   everyone's listening to" feed, newest first.
 
+  **A fifth Discover tab, Similar Listeners, is now ported** too
+  (`GET /social/similar-listeners`) -- real user-to-user collaborative
+  filtering: finds other opted-in users whose top artists overlap with
+  the caller's own, then surfaces tracks THOSE similar listeners play
+  a lot (distinct from both Discover Mix, a YouTube "similar artist"
+  search seeded from the caller's own data, and Trending, which isn't
+  personalized). Ported from Lumisound's `HubSimilarListenersCarousel`
+  on the Library Hub. One deliberate improvement over the iOS
+  original: tapping a row here runs a live search (reusing
+  `StreamingApi.search`, the same one Cloud Services search uses) and
+  plays the first result directly, rather than iOS's approach of
+  opening Cloud Services search pre-filled with the query -- a one-tap
+  shortcut made possible by this app already having the resolve+play
+  pipeline built for Discover Mix. Shows a specific empty-state message
+  ("play a few songs first" vs. "no similar listeners yet") driven by
+  the server's own `reason` field rather than a generic "nothing
+  here." Deliberately skips `/social/trending-by-energy` -- confirmed
+  it has no wired UI anywhere in the iOS app, an orphaned endpoint
+  with nothing to port from.
+
   Avatar upload/display goes through
   `{baseUrl}/user/avatar/{userId}` directly (a raw-bytes GET/POST, not a
   `avatar_url` JSON field -- that column is dead/unused server-side, same

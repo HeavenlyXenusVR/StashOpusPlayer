@@ -14,9 +14,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,7 +36,7 @@ fun DiscoveryScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = state.selectedTab.ordinal) {
+        ScrollableTabRow(selectedTabIndex = state.selectedTab.ordinal) {
             Tab(
                 selected = state.selectedTab == DiscoveryTab.DISCOVER_MIX,
                 onClick = { viewModel.onTabSelected(DiscoveryTab.DISCOVER_MIX) },
@@ -56,6 +56,11 @@ fun DiscoveryScreen(
                 selected = state.selectedTab == DiscoveryTab.COMMUNITY,
                 onClick = { viewModel.onTabSelected(DiscoveryTab.COMMUNITY) },
                 text = { Text("Community") }
+            )
+            Tab(
+                selected = state.selectedTab == DiscoveryTab.SIMILAR_LISTENERS,
+                onClick = { viewModel.onTabSelected(DiscoveryTab.SIMILAR_LISTENERS) },
+                text = { Text("Similar Listeners") }
             )
         }
 
@@ -83,6 +88,15 @@ fun DiscoveryScreen(
                 isLoading = state.isLoadingCommunityActivity,
                 activity = state.communityActivity,
                 error = state.communityActivityError
+            )
+            DiscoveryTab.SIMILAR_LISTENERS -> SimilarListenersContent(
+                isLoading = state.isLoadingSimilarListeners,
+                tracks = state.similarListeners,
+                similarListenerCount = state.similarListenerCount,
+                reason = state.similarListenersReason,
+                error = state.similarListenersError,
+                resolvingKey = state.resolvingTitleArtistKey,
+                onTrackClick = { title, artist -> viewModel.playTitleArtist(title, artist) }
             )
         }
 
@@ -292,6 +306,71 @@ private fun CommunityActivityContent(
                     }
                 }
                 Divider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimilarListenersContent(
+    isLoading: Boolean,
+    tracks: List<com.stash.opusplayer.bridge.api.TrendingTrack>,
+    similarListenerCount: Int,
+    reason: String?,
+    error: String?,
+    resolvingKey: String?,
+    onTrackClick: (String, String?) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = if (tracks.isNotEmpty()) {
+                "Based on $similarListenerCount listener${if (similarListenerCount == 1) "" else "s"} with taste like yours"
+            } else {
+                "Recommendations from other listeners whose top artists overlap with yours."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        when {
+            isLoading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            error != null -> Text(text = error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            tracks.isEmpty() -> EmptyState(
+                title = "Nothing here yet",
+                message = when (reason) {
+                    "not_enough_history" -> "Play a few songs first so we can find listeners with similar taste."
+                    "no_similar_listeners" -> "No opted-in listeners share your top artists yet -- check back later."
+                    else -> "Nothing to show right now."
+                }
+            )
+            else -> tracks.forEach { track ->
+                val key = "${track.title}|${track.artist.orEmpty()}"
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = resolvingKey == null) {
+                        onTrackClick(track.title, track.artist)
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = track.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            track.artist?.takeIf { it.isNotBlank() }?.let {
+                                Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (resolvingKey == key) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        }
+                    }
+                }
             }
         }
     }

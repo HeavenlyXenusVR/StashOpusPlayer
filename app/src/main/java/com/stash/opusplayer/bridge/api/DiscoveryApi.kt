@@ -69,6 +69,26 @@ data class GlobalActivityResponse(
 )
 
 /**
+ * Response of GET /social/similar-listeners (main.py ~L7836) -- real
+ * user-to-user collaborative filtering: finds other opted-in users whose
+ * top artists overlap with the caller's own, then surfaces tracks THOSE
+ * similar listeners play a lot (excluding artists already in the caller's
+ * own top list). [reason] is only set on the two early-return empty cases
+ * ("not_enough_history" -- the caller has no play history at all;
+ * "no_similar_listeners" -- nobody opted-in overlaps) and should drive a
+ * more specific empty-state message than a generic "nothing here."
+ * [tracks] reuses [TrendingTrack]'s shape exactly. Distinct from Discover
+ * Mix (a YouTube "similar artist" search seeded from the caller's own
+ * data, not real listening data from other people) and from global
+ * Trending (not personalized).
+ */
+data class SimilarListenersResponse(
+    val tracks: List<TrendingTrack> = emptyList(),
+    @SerializedName("similar_listener_count") val similarListenerCount: Int = 0,
+    val reason: String? = null
+)
+
+/**
  * Discover Mix, On This Day, Artist Bio, and the opt-in global Trending/
  * Community Activity lists -- read-only, JWT-gated endpoints with no
  * Stash UI before this pass. All needed no bridge changes. Kept as a
@@ -76,17 +96,15 @@ data class GlobalActivityResponse(
  * than folded in, since this is a distinct feature area (discovery/recall,
  * not account sync).
  *
- * [getTrendingTracks]/[getGlobalActivity] require the caller be signed in
- * (JWT), but the *rows themselves* come only from users who separately
- * opted into `share_listening_activity` via
+ * [getTrendingTracks]/[getGlobalActivity]/[getSimilarListeners] require the
+ * caller be signed in (JWT), but the *rows themselves* come only from users
+ * who separately opted into `share_listening_activity` via
  * [com.stash.opusplayer.bridge.api.AuthApi.updatePrivacy] -- the caller's
  * own opt-in status has no bearing on whether THEY can see these lists,
- * only on whether THEIR OWN plays appear in other people's.
- * endpoints with no Stash UI before this pass (confirmed via grep: zero
- * prior references anywhere in this app). All three needed no bridge
- * changes. Kept as a separate interface from [SyncApi] (which is already
- * 400+ lines) rather than folded in, since this is a distinct feature area
- * (discovery/recall, not account sync).
+ * only on whether THEIR OWN plays appear in other people's ([getSimilarListeners]
+ * is the one exception: the caller's OWN top artists are read regardless of
+ * their own opt-in, since that's just their own data being used to find
+ * people like them).
  *
  * [getDiscoverMix]/[getOnThisDay] return metadata only -- [BridgeTrack.id]/
  * [BridgeTrack.source]/[BridgeTrack.youtubeUrl] must be resolved to a
@@ -123,4 +141,8 @@ interface DiscoveryApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("social/activity")
     suspend fun getGlobalActivity(@Query("limit") limit: Int = 30): Response<GlobalActivityResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("social/similar-listeners")
+    suspend fun getSimilarListeners(@Query("limit") limit: Int = 20): Response<SimilarListenersResponse>
 }
