@@ -498,6 +498,25 @@ confirmed by directory/endpoint survey — not touched by this branch:
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
 
+  **Listening stats/insights are now ported** too, as two separate
+  screens matching iOS's own split rather than one combined screen
+  (`Settings -> Rewind` and `Settings -> Listening Heatmap`, both new
+  rows, `com.stash.opusplayer.bridge.api.StatsApi`). Rewind
+  (`GET /user/stats`, `/user/stats/month-in-review`,
+  `/user/stats/year-in-review`) is a 3-tab recap -- All Time/This
+  Month/This Year -- each tab showing total plays, listen time, distinct
+  artist/track counts, average BPM where the server provides it, and
+  top-artists/top-tracks lists, ported from `RewindView.swift`. Listening
+  Heatmap (`GET /user/stats/heatmap`) is a GitHub-contributions-style
+  weekly grid over the last 365 days, shaded by daily play count, tap a
+  day for its exact count, ported from `ListeningHeatmapView.swift`;
+  built client-side from the server's non-zero-filled day list rather
+  than assuming one entry per day. Deliberately does NOT port "Share My
+  Rewind" -- iOS rasterizes the recap card via `ImageRenderer` and hands
+  it to the share sheet, a pure on-device rendering feature with no
+  bridge contract to port; only the underlying stats data is modeled
+  here.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

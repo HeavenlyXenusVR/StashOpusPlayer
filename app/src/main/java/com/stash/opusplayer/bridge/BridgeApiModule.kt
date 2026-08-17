@@ -6,6 +6,7 @@ import com.stash.opusplayer.bridge.api.FingerprintApi
 import com.stash.opusplayer.bridge.api.SocialApi
 import com.stash.opusplayer.bridge.api.PodcastsApi
 import com.stash.opusplayer.bridge.api.SocialProfileApi
+import com.stash.opusplayer.bridge.api.StatsApi
 import com.stash.opusplayer.bridge.api.SubscriptionsApi
 import com.stash.opusplayer.bridge.api.DiscordVerificationApi
 import com.stash.opusplayer.bridge.api.DiscordWebhookApi
@@ -137,4 +138,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun providePodcastsApi(retrofit: Retrofit): PodcastsApi = retrofit.create(PodcastsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideStatsApi(retrofit: Retrofit): StatsApi = retrofit.create(StatsApi::class.java)
 }

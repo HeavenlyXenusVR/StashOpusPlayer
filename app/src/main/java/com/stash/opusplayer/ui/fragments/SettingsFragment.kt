@@ -27,10 +27,12 @@ import com.stash.opusplayer.ui.fragments.settings.FriendActivityFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
+import com.stash.opusplayer.ui.fragments.settings.ListeningHeatmapFragment
 import com.stash.opusplayer.ui.fragments.settings.MoodPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.ScrobblingFragment
 import com.stash.opusplayer.ui.fragments.settings.TempoAnalyzerFragment
 import com.stash.opusplayer.ui.fragments.settings.PodcastsFragment
+import com.stash.opusplayer.ui.fragments.settings.RewindFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
 import com.stash.opusplayer.ui.fragments.settings.SubscriptionsFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
@@ -298,6 +300,22 @@ class SettingsFragment : Fragment() {
             summary = "Subscribe to RSS feeds and play episodes -- shared with Lumisound."
         ) {
             openSettingsScreen(PodcastsFragment(), "Podcasts")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Rewind",
+            summary = "Your all-time, monthly, and yearly listening recap."
+        ) {
+            openSettingsScreen(RewindFragment(), "Rewind")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Listening Heatmap",
+            summary = "A calendar view of how much you've listened each day."
+        ) {
+            openSettingsScreen(ListeningHeatmapFragment(), "Listening Heatmap")
         }
     }
 
