@@ -254,6 +254,7 @@ class NowPlayingActivity : AppCompatActivity() {
                     R.id.action_share -> { shareCurrentTrack(); true }
                     R.id.action_embed_artwork -> { embedArtworkIntoFile(); true }
                     R.id.action_make_clip -> { showMakeClipDialog(); true }
+                    R.id.action_identify_track -> { identifyCurrentTrack(); true }
                     R.id.action_toggle_crossfade -> {
                         // Quick toggle
                         val prefs = getSharedPreferences("settings", 0)
@@ -902,6 +903,70 @@ else -> com.stash.opusplayer.utils.TagEditor.embedArtworkAny(this@NowPlayingActi
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(intent, "Share clip"))
+        }
+    }
+
+    /**
+     * Ported from Lumisound's AcoustIDService/NameThatTuneView -- identifies
+     * a mistagged/unlabeled local track by uploading a trimmed clip to the
+     * shared bridge's AcoustID proxy. Requires being signed in (Settings ->
+     * Account & Server): the same account works here as on Lumisound, and
+     * the bridge needs a user-configured AcoustID API key to actually run
+     * the lookup (a 400 from the server surfaces that requirement directly).
+     */
+    private fun identifyCurrentTrack() {
+        val song = currentSong ?: return
+        val progressDialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Identify Track")
+            .setMessage("Analyzing \"${song.displayName}\"...")
+            .setCancelable(false)
+            .show()
+
+        lifecycleScope.launch {
+            val outcome = try {
+                Result.success(
+                    com.stash.opusplayer.identify.AcoustIdService.identify(
+                        this@NowPlayingActivity, song.path, song.duration, song.title
+                    )
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            progressDialog.dismiss()
+
+            outcome.fold(
+                onSuccess = { match ->
+                    val details = buildString {
+                        append("Title: ${match.title}")
+                        match.artist?.let { append("\nArtist: $it") }
+                        match.album?.let { append("\nAlbum: $it") }
+                        append("\nConfidence: ${(match.score * 100).toInt()}%")
+                    }
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@NowPlayingActivity)
+                        .setTitle("Match Found")
+                        .setMessage(details)
+                        .setPositiveButton("OK", null)
+                        .show()
+                },
+                onFailure = { error ->
+                    val message = when (error) {
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.NotLoggedIn ->
+                            "Sign in first (Settings -> Account & Server)."
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.TrimFailed ->
+                            "Couldn't read this track's audio."
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.NotMatched ->
+                            "No match found for this track."
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.Server ->
+                            error.detail
+                        else -> "Something went wrong."
+                    }
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@NowPlayingActivity)
+                        .setTitle("Couldn't Identify Track")
+                        .setMessage(message)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            )
         }
     }
 

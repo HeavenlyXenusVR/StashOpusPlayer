@@ -139,8 +139,30 @@ confirmed by directory/endpoint survey — not touched by this branch:
   `ClipExportService`'s near-duplicate Swift implementations were merged
   into one Kotlin service.
 
-  Still unported: AcoustID fingerprint identification, harmonic mixing,
-  spatial audio, GIF search.
+  **AcoustID fingerprint identification is also now ported**
+  (`com.stash.opusplayer.identify.AcoustIdService`, reachable from Now
+  Playing's overflow menu -> "Identify Track (AcoustID)"). No fingerprinting
+  happens client-side on either platform -- the bridge runs real Chromaprint
+  (`fpcalc`) and queries api.acoustid.org; the client's only job is
+  trimming/uploading a representative clip. Reuses `ClipExportService`'s
+  decode/encode pipeline (built for Clip Maker) rather than a second
+  implementation, with a 120s cap matching the Swift original. New
+  `FingerprintApi` Retrofit client -- NOT `@Multipart` despite uploading a
+  file, since the bridge's actual contract is a raw `application/octet-stream`
+  body with the extension as a query param, confirmed against both the iOS
+  client and main.py directly. Requires being signed in (same shared-bridge
+  account as everything else) and a user-configured AcoustID API key
+  server-side.
+
+  Still unported: harmonic mixing, spatial audio, GIF search. Harmonic
+  mixing and GIF search were surveyed and found to be thin bridge-HTTP
+  wrappers around server-side analysis/proxying (small effort if picked up
+  later) but contingent on features StashOpusPlayer doesn't have yet
+  (cloud-uploaded pre-analyzed tracks; an avatar/banner picker UI).
+  Spatial audio is genuine `AVAudioEnvironmentNode` HRTF rendering + head
+  tracking with no Android equivalent -- would need a from-scratch HRTF
+  convolution engine, a substantially larger undertaking than everything
+  else in this category.
 - **Library maintenance**: corrupt-file finder, recently-deleted recovery,
   periodic metadata refresh. Stash has its own separate duplicate-finder
   path (`DuplicateFinderService.kt`, pre-existing) but nothing matching

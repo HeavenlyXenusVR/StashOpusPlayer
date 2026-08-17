@@ -2,6 +2,7 @@ package com.stash.opusplayer.bridge
 
 import com.google.gson.GsonBuilder
 import com.stash.opusplayer.bridge.api.AuthApi
+import com.stash.opusplayer.bridge.api.FingerprintApi
 import com.stash.opusplayer.bridge.api.SocialApi
 import com.stash.opusplayer.bridge.api.StreamingApi
 import com.stash.opusplayer.bridge.api.SyncApi
@@ -58,8 +59,13 @@ object BridgeApiModule {
     ): OkHttpClient =
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            // 45s (not 30s) to comfortably cover /api/fingerprint/identify's
+            // own ~30s server-side fpcalc subprocess timeout plus the
+            // AcoustID web-service round trip on top of it -- matches
+            // Lumisound's AcoustIDService, which uses the same 45s for this
+            // exact call. Harmless slack for every other, much faster route.
+            .readTimeout(45, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
             .addInterceptor(BridgeBaseUrlInterceptor(config))
             .addInterceptor(BridgeAuthInterceptor(config, tokenStore))
             // Logging last so it observes the final URL/headers actually sent.
@@ -92,4 +98,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideSyncApi(retrofit: Retrofit): SyncApi = retrofit.create(SyncApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideFingerprintApi(retrofit: Retrofit): FingerprintApi = retrofit.create(FingerprintApi::class.java)
 }

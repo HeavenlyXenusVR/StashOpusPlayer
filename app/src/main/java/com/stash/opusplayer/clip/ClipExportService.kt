@@ -34,7 +34,8 @@ import java.util.UUID
  */
 object ClipExportService {
 
-    private const val MAX_CLIP_SECONDS = 60
+    /** Default cap, matching the Make Clip UI's own slider limit (Lumisound's ClipMakerView `maxClipLength`). */
+    const val DEFAULT_MAX_CLIP_SECONDS = 60
     private const val MIN_CLIP_MS = 500L
     private const val DECODE_TIMEOUT_US = 10_000L
     private const val DEFAULT_BIT_RATE = 192_000
@@ -47,15 +48,24 @@ object ClipExportService {
 
     /**
      * @param startMs clip start, clamped to >= 0
-     * @param endMs clip end, clamped so the clip is at least [MIN_CLIP_MS] and at most [MAX_CLIP_SECONDS]
+     * @param endMs clip end, clamped so the clip is at least [MIN_CLIP_MS] and at most [maxClipSeconds]
      * @param title used only for the output filename (sanitized to alphanumerics), matching
      *   ClipExportService's title param -- never embedded as metadata, matching the Swift original.
+     * @param maxClipSeconds override for callers that need a longer allowance than the Make Clip UI's
+     *   own 60s limit -- e.g. AcoustIdService trims up to 120s, matching Lumisound's AcoustIDService.
      */
-    suspend fun exportClip(context: Context, path: String, startMs: Long, endMs: Long, title: String): File =
+    suspend fun exportClip(
+        context: Context,
+        path: String,
+        startMs: Long,
+        endMs: Long,
+        title: String,
+        maxClipSeconds: Int = DEFAULT_MAX_CLIP_SECONDS
+    ): File =
         withContext(Dispatchers.Default) {
             val clipStart = startMs.coerceAtLeast(0)
             val clipEnd = endMs.coerceAtLeast(clipStart + MIN_CLIP_MS)
-                .coerceAtMost(clipStart + MAX_CLIP_SECONDS * 1000L)
+                .coerceAtMost(clipStart + maxClipSeconds * 1000L)
             if (clipEnd <= clipStart) throw ClipError.InvalidRange
 
             val sanitizedTitle = title.filter { it.isLetterOrDigit() }.ifBlank { "clip" }
