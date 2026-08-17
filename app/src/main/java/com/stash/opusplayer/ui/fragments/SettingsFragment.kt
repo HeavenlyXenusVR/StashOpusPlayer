@@ -37,6 +37,7 @@ import com.stash.opusplayer.security.AppLockManager
 import com.stash.opusplayer.ui.fragments.settings.RewindFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
 import com.stash.opusplayer.ui.fragments.settings.SubscriptionsFragment
+import com.stash.opusplayer.ui.fragments.settings.YtdlpCookiesFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.SmartPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingSettingsFragment
@@ -184,6 +185,14 @@ class SettingsFragment : Fragment() {
             summary = "YouTube API key, Lavalink routing, extractor health, and yt-dlp updates."
         ) {
             openSettingsScreen(StreamingSettingsFragment(), "Streaming & Downloads")
+        }
+
+        addSettingsTile(
+            section,
+            title = "yt-dlp Cookies",
+            summary = "Upload your own YouTube session cookies to unlock age-restricted or login-required videos."
+        ) {
+            openSettingsScreen(YtdlpCookiesFragment(), "yt-dlp Cookies")
         }
 
         addSettingsTile(

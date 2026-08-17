@@ -679,6 +679,27 @@ confirmed by directory/endpoint survey — not touched by this branch:
   before save (matching Swift's `saveBio()`), 280-char cap enforced
   server-side (400 on overflow, surfaced as an inline error).
 
+  **yt-dlp Cookies management is now ported** too (`Settings ->
+  yt-dlp Cookies`), ported from `AccountService+YtdlpCookies.swift` /
+  `CookiesFileView.swift`. Lets a user upload their own YouTube session
+  cookies (exported as a Netscape-format `cookies.txt`, e.g. via a "Get
+  cookies.txt LOCALLY" browser extension) so server-side yt-dlp
+  extraction for Browse & Stream / Discovery can resolve age-restricted
+  or login-required videos, which otherwise fail under an unauthenticated
+  session. File picking + reading to text happens at the Fragment layer
+  via `ActivityResultContracts.GetContent()` +
+  `openInputStream().readBytes()`, the same Storage Access Framework
+  convention `PlaylistsFragment`'s M3U import already uses -- the
+  ViewModel/API layer only ever sees the resulting raw text, matching
+  the bridge's own `{"cookies_text": "..."}` JSON body (not a multipart
+  upload). "Validate Cookies" is a real server-side check, not just a DB
+  read -- the bridge actually runs `yt-dlp --simulate` against a fixed
+  test video, so it can take a few seconds; the result surfaces status
+  (valid/expired/incomplete/missing/invalid), an age-restriction-ready
+  flag, cookie count, and any missing required cookie names. Cookie
+  contents are never echoed back by the server -- only
+  configured/last-updated status.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots
