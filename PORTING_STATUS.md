@@ -700,6 +700,24 @@ confirmed by directory/endpoint survey — not touched by this branch:
   contents are never echoed back by the server -- only
   configured/last-updated status.
 
+  **YouTube Data API Key is now ported** too (`Settings -> YouTube API
+  Key`), ported from `YoutubeApiKeyView.swift`. Lets a user supply their
+  own YouTube Data API v3 key so full playlists (over yt-dlp's ~205-entry
+  flat-playlist cap) resolve completely via the real `playlistItems.list`
+  API; purely an opt-in override -- the server falls back to its own
+  shared key when no personal key is configured. Configure/Validate/
+  Remove follows the same shape as yt-dlp Cookies (server masks the key
+  when returning status, never echoes the raw value back). "Validate API
+  Key" is a real 1-quota-unit API call, not a DB read. Also ports
+  `GET /youtube/key-exposure-check` -- NOT a normal validity check, a
+  heuristic that detects signs an already-working key has been
+  leaked/scraped and is now being abused (invalidated, referrer/IP-
+  restricted from this server, or quota exhausted suspiciously fast).
+  iOS polls this automatically every 5 minutes while its Settings screen
+  is open; that always-on polling is deliberately NOT ported -- kept as
+  a manual "Check for Key Exposure" button instead, since a background
+  poller is more surface area than this chunk's scope justifies.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

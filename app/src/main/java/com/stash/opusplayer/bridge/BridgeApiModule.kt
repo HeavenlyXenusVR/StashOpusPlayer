@@ -14,6 +14,7 @@ import com.stash.opusplayer.bridge.api.DevicesApi
 import com.stash.opusplayer.bridge.api.DiscoveryApi
 import com.stash.opusplayer.bridge.api.FolderBackupApi
 import com.stash.opusplayer.bridge.api.QueueApi
+import com.stash.opusplayer.bridge.api.YoutubeApiKeyApi
 import com.stash.opusplayer.bridge.api.YtdlpCookiesApi
 import com.stash.opusplayer.bridge.api.StreamingApi
 import com.stash.opusplayer.bridge.api.SyncApi
@@ -157,4 +158,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideYtdlpCookiesApi(retrofit: Retrofit): YtdlpCookiesApi = retrofit.create(YtdlpCookiesApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideYoutubeApiKeyApi(retrofit: Retrofit): YoutubeApiKeyApi = retrofit.create(YoutubeApiKeyApi::class.java)
 }
