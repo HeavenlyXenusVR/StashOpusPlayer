@@ -39,6 +39,16 @@
         android:visible="true" />
 
     <item
+        android:id="@+id/action_send_to_device"
+        android:title="Send to Device"
+        android:visible="true" />
+
+    <item
+        android:id="@+id/action_restore_synced_queue"
+        android:title="Restore Synced Queue"
+        android:visible="true" />
+
+    <item
         android:id="@+id/action_go_to_album"
         android:title="Go to Album"
         android:visible="true" />

@@ -571,6 +571,37 @@ confirmed by directory/endpoint survey — not touched by this branch:
   pending-token mechanism and UI as password-login 2FA, matching how
   iOS's `pendingTOTPToken` is shared between both paths.
 
+  **Cross-device playback handoff and queue sync are now ported** too
+  (`Now Playing -> overflow menu -> "Send to Device"` /
+  `"Restore Synced Queue"`), ported from
+  `AccountService+PlaybackTransfer.swift` /
+  `AccountService+QueueSync.swift`. Queue sync
+  (`GET`/`PUT /user/queue`) pushes the whole queue automatically
+  whenever `MusicPlayerManager.playQueue()` replaces it (fire-and-forget,
+  matching iOS's "automatically in the background whenever the queue
+  changes") -- note this covers whole-queue replacement, not every
+  individual skip/reorder/add, a deliberate scope trim; pulling a synced
+  queue back is a manual "Restore Synced Queue" action rather than
+  automatic-on-launch, since silently replacing whatever the user is
+  currently playing felt like the wrong default for a from-scratch
+  Android UI with no existing reactive-login hook to piggyback on like
+  iOS's Combine pipeline has.
+
+  Playback transfer (`GET /user/devices`, `POST /user/playback/transfer`)
+  is **outbound-only** on Android: a "device" is just a row in the
+  bridge's push-token table (`ios_push_tokens`), populated purely by
+  registering for push notifications -- a subsystem this project hasn't
+  added (Firebase from scratch, same reasoning as the deferred Weekly
+  Mix/push-notifications big items). That means this device can send
+  playback to another (e.g. an iPhone running Lumisound) but can never
+  appear as a transfer target itself, and can't receive an incoming
+  transfer either (that also requires a push). Both new API surfaces
+  (`QueueApi`, `DevicesApi`) plus `QueueSyncService`/
+  `PlaybackTransferService` follow the project's established
+  `EntryPointAccessors` pattern (see `PlayHistoryLogger`) since both
+  `MusicPlayerManager` and `NowPlayingActivity` are plain, non-Hilt
+  classes.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

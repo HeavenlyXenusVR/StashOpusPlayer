@@ -171,6 +171,11 @@ class MusicPlayerManager(private val context: Context) {
         _currentIndex.value = idx
         _currentSong.value = songs[idx]
         scheduleHistoryLog(_currentSong.value)
+        historyLogScope.launch {
+            withContext(Dispatchers.IO) {
+                com.stash.opusplayer.bridge.QueueSyncService.pushQueue(context, songs)
+            }
+        }
         val mediaItems = songs.map { song -> createMediaItem(song) }
         android.util.Log.d("MusicPlayerManager", "playQueue: size=${songs.size} idx=$idx firstUri=${resolveSongUri(songs.first()).toString()}")
         runWhenReady { controller ->

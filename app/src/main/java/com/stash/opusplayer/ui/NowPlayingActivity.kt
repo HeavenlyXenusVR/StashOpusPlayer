@@ -36,6 +36,7 @@ import androidx.core.os.bundleOf
 import com.stash.opusplayer.utils.MetadataExtractor
 import com.stash.opusplayer.utils.AnimationUtils
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 class NowPlayingActivity : AppCompatActivity() {
@@ -288,6 +289,14 @@ class NowPlayingActivity : AppCompatActivity() {
                     }
                     R.id.action_sleep_timer -> {
                         showSleepTimerDialog()
+                        true
+                    }
+                    R.id.action_send_to_device -> {
+                        showSendToDeviceDialog()
+                        true
+                    }
+                    R.id.action_restore_synced_queue -> {
+                        restoreSyncedQueue()
                         true
                     }
                     R.id.action_go_to_album -> {
@@ -715,6 +724,63 @@ val repository = com.stash.opusplayer.data.MusicRepository(this@NowPlayingActivi
             }
             .setNegativeButton("Close", null)
             .show()
+    }
+
+    /**
+     * Ported from `TransferPlaybackSheet.swift`. Android has no push-token
+     * registration (see [com.stash.opusplayer.bridge.api.DevicesApi]'s doc
+     * comment), so the device list here can only ever show OTHER devices --
+     * this is send-only, matching that comment's scope note.
+     */
+    private fun showSendToDeviceDialog() {
+        val song = currentSong ?: run { showVisualFeedback("Nothing is playing"); return }
+        lifecycleScope.launch {
+            val devices = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.stash.opusplayer.bridge.PlaybackTransferService.fetchOtherDevices(this@NowPlayingActivity)
+            }
+            if (devices.isEmpty()) {
+                showVisualFeedback("No other devices found. Sign in on another device with push notifications enabled.")
+                return@launch
+            }
+            val labels = devices.map { d ->
+                d.deviceName?.takeIf { it.isNotBlank() } ?: (d.platform?.replaceFirstChar { c -> c.uppercase() } ?: "Unknown device")
+            }.toTypedArray()
+            androidx.appcompat.app.AlertDialog.Builder(this@NowPlayingActivity)
+                .setTitle("Send to Device")
+                .setItems(labels) { dialog, which ->
+                    val device = devices[which]
+                    val position = (mediaController?.currentPosition ?: 0L) / 1000.0
+                    val playing = mediaController?.isPlaying == true
+                    lifecycleScope.launch {
+                        val ok = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            com.stash.opusplayer.bridge.PlaybackTransferService.transferPlayback(
+                                this@NowPlayingActivity, song, position, playing, device.deviceToken
+                            )
+                        }
+                        showVisualFeedback(if (ok) "Sent to ${labels[which]}" else "Couldn't send playback -- try again")
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    /** Ported from `AccountService+QueueSync.swift`'s `fetchQueue`. Replaces the current queue outright -- no merge, matching the Swift original. */
+    private fun restoreSyncedQueue() {
+        lifecycleScope.launch {
+            val librarySongs = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.stash.opusplayer.data.MusicRepository(this@NowPlayingActivity).getAllSongsFromAllSourcesFast()
+            }
+            val queue = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.stash.opusplayer.bridge.QueueSyncService.fetchQueue(this@NowPlayingActivity, librarySongs)
+            }
+            if (queue.isEmpty()) {
+                showVisualFeedback("No synced queue found")
+                return@launch
+            }
+            musicPlayerManager?.playQueue(queue, 0)
+            showVisualFeedback("Restored ${queue.size} track(s) from synced queue")
+        }
     }
 
     private fun sendSleepTimerCommand(durationMs: Long) {

@@ -10,8 +10,10 @@ import com.stash.opusplayer.bridge.api.StatsApi
 import com.stash.opusplayer.bridge.api.SubscriptionsApi
 import com.stash.opusplayer.bridge.api.DiscordVerificationApi
 import com.stash.opusplayer.bridge.api.DiscordWebhookApi
+import com.stash.opusplayer.bridge.api.DevicesApi
 import com.stash.opusplayer.bridge.api.DiscoveryApi
 import com.stash.opusplayer.bridge.api.FolderBackupApi
+import com.stash.opusplayer.bridge.api.QueueApi
 import com.stash.opusplayer.bridge.api.StreamingApi
 import com.stash.opusplayer.bridge.api.SyncApi
 import dagger.Module
@@ -142,4 +144,12 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideStatsApi(retrofit: Retrofit): StatsApi = retrofit.create(StatsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideQueueApi(retrofit: Retrofit): QueueApi = retrofit.create(QueueApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDevicesApi(retrofit: Retrofit): DevicesApi = retrofit.create(DevicesApi::class.java)
 }
