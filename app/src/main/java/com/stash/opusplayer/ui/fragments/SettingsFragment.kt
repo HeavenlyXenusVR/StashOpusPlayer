@@ -30,6 +30,7 @@ import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.MoodPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.ScrobblingFragment
 import com.stash.opusplayer.ui.fragments.settings.TempoAnalyzerFragment
+import com.stash.opusplayer.ui.fragments.settings.PodcastsFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
 import com.stash.opusplayer.ui.fragments.settings.SubscriptionsFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
@@ -289,6 +290,14 @@ class SettingsFragment : Fragment() {
             summary = "Follow YouTube channels and get notified of new uploads -- shared with Lumisound."
         ) {
             openSettingsScreen(SubscriptionsFragment(), "Subscriptions")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Podcasts",
+            summary = "Subscribe to RSS feeds and play episodes -- shared with Lumisound."
+        ) {
+            openSettingsScreen(PodcastsFragment(), "Podcasts")
         }
     }
 

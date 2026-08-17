@@ -274,13 +274,40 @@ confirmed by directory/endpoint survey — not touched by this branch:
   folder-picker equivalent) -- mute is the only per-subscription
   setting this pass edits.
 
+  **Podcast subscriptions + episode playback are now ported** too
+  (`Settings -> Podcasts`, `com.stash.opusplayer.bridge.api.PodcastsApi`).
+  A completely separate feature from artist channel subscriptions
+  above -- RSS-feed-based, not YouTube-channel-based. Subscribe by
+  feed URL (validated server-side by actually fetching it), mute/
+  unsubscribe, tap a subscription to browse its episode list, tap an
+  episode to play it. Notably **needs no bridge resolve/stream step at
+  all**: each episode's `audio_url` is a direct RSS enclosure URL,
+  playable as-is through the shared player -- unlike every YouTube-
+  sourced track list elsewhere in this app, which all need the
+  search-or-discover -> resolve -> play two-step. Deliberately trimmed
+  from the bridge's full podcast subsystem: chapters
+  (`GET /user/podcasts/chapters`), per-episode playback-progress sync
+  (`PUT`/`GET /user/podcasts/episode-progress`), OPML import/export,
+  and search/trending discovery (`/podcasts/search`,
+  `/podcasts/trending`) are all real, separately-portable features not
+  attempted in this pass.
+
   Still unbuilt: cross-device sync, push notifications, weekly mix
   (blocked on an entirely separate "personal cloud music library" API
   family -- `/user/music/search|upload|stream|artwork|metadata|
   recommendations|smart-playlists` -- that this app doesn't model at
   all yet; discovered while scoping weekly mix, bigger than a one-off
-  addition), and tracked playlists (the sibling feature to
-  subscriptions, a separate concept -- not attempted in this pass).
+  addition), and tracked playlists (the sibling feature to artist
+  subscriptions -- deliberately skipped after investigation: unlike
+  every other feature ported this session, the real `GET
+  /user/playlists` endpoint this app's playlist CRUD already uses
+  never echoes back `source_url`/`source_new_count`, so a "this
+  playlist is tracked" badge or a pending-new-tracks indicator can't
+  be shown from a normal list load -- only `/user/sync`'s separate,
+  deliberately-unmodeled bespoke payload includes those fields. A
+  real implementation would need either adopting `/user/sync` (already
+  ruled out, see that endpoint's own doc comment) or a bridge change,
+  neither of which fits this pass.
 
   **Profile banner + guestbook comments are now ported** too (tap a
   friend in `Settings -> Friends`, or `Settings -> Account & Server ->
