@@ -17,6 +17,7 @@ import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
 import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
 import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
+import com.stash.opusplayer.ui.fragments.settings.CloudPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
@@ -193,6 +194,14 @@ class SettingsFragment : Fragment() {
             summary = "Badges, streaks, and listening stats -- shared with Lumisound."
         ) {
             openSettingsScreen(AchievementsFragment(), "Achievements")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Cloud Playlists",
+            summary = "Browse playlists synced to your account and playlists shared with you -- manage collaborators, shared with Lumisound."
+        ) {
+            openSettingsScreen(CloudPlaylistsFragment(), "Cloud Playlists")
         }
 
         addSettingsTile(

@@ -221,6 +221,65 @@ data class LibrefmLinkResponse(
     @SerializedName("librefm_username") val librefmUsername: String? = null
 )
 
+/** One row of GET /user/playlists/{id}/collaborators (main.py ~L13322). */
+data class PlaylistCollaborator(
+    @SerializedName("user_id") val userId: String,
+    val username: String,
+    val role: String,
+    @SerializedName("added_at") val addedAt: String? = null
+)
+
+/** Body for POST /user/playlists/{id}/collaborators (`AddCollaboratorRequest`, main.py ~L2088). [role] must be "editor" or "viewer". */
+data class AddCollaboratorRequest(
+    val username: String,
+    val role: String = "editor"
+)
+
+/** Response of POST /user/playlists/{id}/collaborators (status 201 despite the plain-object body). */
+data class AddCollaboratorResponse(
+    @SerializedName("playlist_id") val playlistId: String,
+    val username: String,
+    val role: String
+)
+
+/**
+ * One row of GET /user/playlists/shared-with-me (main.py ~L13382) -- a
+ * summary only, deliberately NOT the full [BridgePlaylist] shape: no
+ * `tracks` here, fetch those via [SyncApi.getPlaylist] when the user opens
+ * one. Owned playlists are never included in this list (those come from
+ * [SyncApi.getPlaylists]) -- this is exclusively rows where the caller is a
+ * collaborator.
+ */
+data class SharedWithMePlaylist(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val role: String,
+    @SerializedName("owner_username") val ownerUsername: String,
+    @SerializedName("updated_at") val updatedAt: String? = null
+)
+
+/**
+ * Body for POST /user/playlists/{id}/tracks -- reuses the same shape as
+ * `SyncTrack` server-side (main.py ~L1944). [position] is accepted but
+ * ignored server-side; the bridge always appends (assigns `MAX(position)+1`
+ * for that playlist) regardless of what's sent here.
+ */
+data class AddPlaylistTrackRequest(
+    val title: String,
+    val artist: String? = null,
+    val album: String? = null,
+    @SerializedName("track_url") val trackUrl: String? = null,
+    @SerializedName("local_song_id") val localSongId: String? = null,
+    @SerializedName("duration_seconds") val durationSeconds: Int? = 0
+)
+
+/** Response of POST /user/playlists/{id}/tracks (201): `{"id": "<uuid>", "position": <int>}` -- just the new track's id/position, not the full track object. */
+data class AddPlaylistTrackResponse(
+    val id: String,
+    val position: Int
+)
+
 /**
  * Playlists + favorites + backups + history/achievements -- the "basic
  * sync" subset covered in this pass. All require the user's JWT
@@ -245,6 +304,10 @@ data class LibrefmLinkResponse(
  * the actual scrobble POST to those services is entirely server-side,
  * fire-and-forget from `/user/history`; these routes only ever manage
  * which accounts are linked, never scrobble anything themselves.
+ * Collaborative playlists (`/user/playlists/{id}/collaborators*`,
+ * `/user/playlists/shared-with-me`, `/user/playlists/{id}/tracks`) are also
+ * modeled -- no bridge changes were needed, this app just never had UI for
+ * cloud-playlist browsing at all before this pass.
  * Still not modeled: `/user/library/inventory`, `/user/folder-backups`,
  * `/user/stats`, `/user/settings`.
  */
@@ -339,4 +402,38 @@ interface SyncApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @POST("user/scrobble/librefm/link")
     suspend fun librefmLink(@Body body: ScrobbleLinkTokenRequest): Response<LibrefmLinkResponse>
+
+    /** Owner-only; 403 if the caller doesn't own [playlistId]. Upserts if [username] is already a collaborator (changes their role). */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/playlists/{playlistId}/collaborators")
+    suspend fun addCollaborator(
+        @Path("playlistId") playlistId: String,
+        @Body body: AddCollaboratorRequest
+    ): Response<AddCollaboratorResponse>
+
+    /** Owner or any collaborator can list -- 404 if the caller has no relationship to [playlistId] at all. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/playlists/{playlistId}/collaborators")
+    suspend fun getCollaborators(@Path("playlistId") playlistId: String): Response<List<PlaylistCollaborator>>
+
+    /** Owner can remove anyone; a collaborator can only remove themselves ([collabUserId] == their own id) -- 403 otherwise. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @DELETE("user/playlists/{playlistId}/collaborators/{collabUserId}")
+    suspend fun removeCollaborator(
+        @Path("playlistId") playlistId: String,
+        @Path("collabUserId") collabUserId: String
+    ): Response<Unit>
+
+    /** Playlists where the caller is a collaborator (never owned ones -- see [SharedWithMePlaylist]). */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/playlists/shared-with-me")
+    suspend fun getSharedWithMePlaylists(): Response<List<SharedWithMePlaylist>>
+
+    /** Owner or editor only -- 403 for viewers, 404 if the caller has no relationship to [playlistId]. Always appends to the end regardless of any position sent. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/playlists/{playlistId}/tracks")
+    suspend fun addPlaylistTrack(
+        @Path("playlistId") playlistId: String,
+        @Body body: AddPlaylistTrackRequest
+    ): Response<AddPlaylistTrackResponse>
 }

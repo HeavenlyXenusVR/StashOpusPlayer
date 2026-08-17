@@ -91,9 +91,10 @@ confirmed by directory/endpoint survey — not touched by this branch:
 
 - **Social**: friend requests/presence UI now reachable (`FriendsScreen`,
   Settings -> Friends) and backed by the same `SocialApi` Lumisound's bridge
-  serves, but leaderboards, compatibility, activity feed, collaborative
-  playlists, Listen Together (SharePlay has no Android equivalent to map to
-  anyway), and profile comments/banners are still unbuilt.
+  serves, but leaderboards, compatibility, activity feed, Listen Together
+  (SharePlay has no Android equivalent to map to anyway), and profile
+  comments/banners are still unbuilt. Collaborative playlists are now
+  built -- see the "Cloud Playlists + Collaboration" entry below.
 - **Play History + Achievements are now ported.** `PlayHistoryLogger`
   posts to `/user/history` ~5 seconds after a track starts (cancelled/
   rescheduled on every track change, matching Lumisound's own accidental-
@@ -161,6 +162,27 @@ confirmed by directory/endpoint survey — not touched by this branch:
   title[+artist] (same fallback-matching approach `M3UImportService`
   already established) and merges rather than replaces locally, since a
   snapshot may reference songs that only exist on the other device.
+
+  **Cloud Playlists + Collaboration are now ported too** (`Settings ->
+  Cloud Playlists`, `com.stash.opusplayer.ui.compose.playlists.*`). This
+  chunk turned out bigger than it first looked: `SyncApi` already modeled
+  basic playlist CRUD (`getPlaylists`/`getPlaylist`/etc.) but nothing in
+  the app UI had ever called any of it -- there was no cloud-playlist
+  browsing screen at all before this. Built one screen covering both list
+  ("Your Playlists" + "Shared with You") and detail (tracks,
+  collaborator management) as one Compose island with internal
+  list/detail state, no Fragment-level navigation. Owners can invite by
+  username with an Editor/Viewer role picker and remove any collaborator;
+  non-owner collaborators can leave a playlist (remove themselves) but
+  see no edit UI, matching Lumisound's own `SharedPlaylistDetailView`
+  exactly -- confirmed by grep that iOS's own UI never calls
+  `POST /user/playlists/{id}/tracks` either, so "add a track to a cloud
+  playlist" is deliberately NOT built here (no reference design exists on
+  either platform, despite the endpoint existing server-side). No bridge
+  changes were needed; all 5 endpoints
+  (`POST/GET /user/playlists/{id}/collaborators`,
+  `DELETE .../collaborators/{userId}`, `GET /user/playlists/shared-with-me`,
+  `POST /user/playlists/{id}/tracks`) already existed.
 - **Watch/widgets/system integration**: `PhoneWatchSync`, `WidgetDataView`,
   Live Activities, Siri App Intents (`LumisoundAppIntents`), Focus Filter.
   No Android Wear or widget work has started.
