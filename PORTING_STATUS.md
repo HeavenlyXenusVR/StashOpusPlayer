@@ -89,12 +89,17 @@ the rest of Lumisound has no Stash equivalent yet.
 Everything below is Lumisound feature surface with **no Stash equivalent**,
 confirmed by directory/endpoint survey — not touched by this branch:
 
-- **Social**: friend requests/presence UI now reachable (`FriendsScreen`,
-  Settings -> Friends) and backed by the same `SocialApi` Lumisound's bridge
-  serves, but leaderboards, compatibility, activity feed, Listen Together
-  (SharePlay has no Android equivalent to map to anyway), and profile
-  comments/banners are still unbuilt. Collaborative playlists are now
-  built -- see the "Cloud Playlists + Collaboration" entry below.
+- **Social**: friend requests/presence, leaderboards, activity feed
+  (both friends-only and global), compatibility, blocking, nicknames/
+  tags, suggestions, profile banner/guestbook/badges/streak, and basic
+  self-profile editing are all now built -- see the dedicated entries
+  below for each. Listen Together (SharePlay has no Android equivalent
+  to map to anyway) is ruled out entirely. Still unbuilt: pinned
+  tracks, top genres/artists, visitor stats, accent/frame/decoration/
+  effect profile customization, friend blocking's own "compatibility"
+  variant is done but its blend-mix companion isn't, and Discord Rich
+  Presence config registration (`/user/discord-rpc-config`) -- still
+  tied to the local desktop RPC daemon this port already ruled out.
 - **Play History + Achievements are now ported.** `PlayHistoryLogger`
   posts to `/user/history` ~5 seconds after a track starts (cancelled/
   rescheduled on every track change, matching Lumisound's own accidental-
@@ -249,12 +254,33 @@ confirmed by directory/endpoint survey — not touched by this branch:
   path concept to mirror iOS's `folder_path` with, so tree folders are
   keyed by their `DocumentFile` display name instead).
 
-  Still unbuilt: cross-device sync, subscriptions/feed, push
-  notifications, weekly mix (blocked on an entirely separate "personal
-  cloud music library" API family -- `/user/music/search|upload|stream|
-  artwork|metadata|recommendations|smart-playlists` -- that this app
-  doesn't model at all yet; discovered while scoping weekly mix, bigger
-  than a one-off addition).
+  **Channel subscriptions + a new-releases feed are now ported** too
+  (`Settings -> Subscriptions`, `com.stash.opusplayer.bridge.api.SubscriptionsApi`).
+  A subscription is a followed YouTube channel -- NOT the separate,
+  unrelated "tracked playlist" feature iOS bundles on the same screen,
+  out of scope here. Two tabs: Channels (subscribe by URL/@handle/
+  name, per-row Check + Check All, mute toggle, unsubscribe, inline
+  new-tracks list after a check) and Feed (a flat new-releases list,
+  unread dot indicator, Mark All Read, swipe-equivalent Dismiss).
+  Tapping any track (inline new-track or feed row) resolves + plays
+  directly via the same pipeline built for Discover Mix -- matches
+  iOS's own tap-to-play behavior exactly (never "open source"). No
+  client-side polling: the bridge already auto-checks every
+  subscription roughly every 4 hours regardless of whether the app is
+  open (confirmed background polling loop in main.py), so this screen
+  only ever triggers checks in the foreground on an explicit tap,
+  matching iOS. Deliberately skips per-subscription auto-download/
+  destination-folder/category settings (would need an Android SAF-
+  folder-picker equivalent) -- mute is the only per-subscription
+  setting this pass edits.
+
+  Still unbuilt: cross-device sync, push notifications, weekly mix
+  (blocked on an entirely separate "personal cloud music library" API
+  family -- `/user/music/search|upload|stream|artwork|metadata|
+  recommendations|smart-playlists` -- that this app doesn't model at
+  all yet; discovered while scoping weekly mix, bigger than a one-off
+  addition), and tracked playlists (the sibling feature to
+  subscriptions, a separate concept -- not attempted in this pass).
 
   **Profile banner + guestbook comments are now ported** too (tap a
   friend in `Settings -> Friends`, or `Settings -> Account & Server ->

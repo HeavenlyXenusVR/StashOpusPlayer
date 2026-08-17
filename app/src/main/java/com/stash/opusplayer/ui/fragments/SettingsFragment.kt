@@ -31,6 +31,7 @@ import com.stash.opusplayer.ui.fragments.settings.MoodPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.ScrobblingFragment
 import com.stash.opusplayer.ui.fragments.settings.TempoAnalyzerFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
+import com.stash.opusplayer.ui.fragments.settings.SubscriptionsFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.SmartPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingSettingsFragment
@@ -280,6 +281,14 @@ class SettingsFragment : Fragment() {
             summary = "Browse and stream from the bridge server."
         ) {
             openSettingsScreen(StreamingBrowseHostFragment(), "Browse & Stream")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Subscriptions",
+            summary = "Follow YouTube channels and get notified of new uploads -- shared with Lumisound."
+        ) {
+            openSettingsScreen(SubscriptionsFragment(), "Subscriptions")
         }
     }
 
