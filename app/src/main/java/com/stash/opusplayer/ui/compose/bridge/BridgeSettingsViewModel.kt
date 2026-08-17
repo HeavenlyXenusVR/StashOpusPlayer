@@ -15,7 +15,10 @@ import com.stash.opusplayer.bridge.api.ChangePasswordRequest
 import com.stash.opusplayer.bridge.api.DeleteAccountRequest
 import com.stash.opusplayer.bridge.api.LoginRequest
 import com.stash.opusplayer.bridge.api.RegisterRequest
+import com.stash.opusplayer.bridge.api.TwoFactorDisableRequest
 import com.stash.opusplayer.bridge.api.TwoFactorLoginRequest
+import com.stash.opusplayer.bridge.api.TwoFactorSetupResponse
+import com.stash.opusplayer.bridge.api.TwoFactorVerifyRequest
 import com.stash.opusplayer.bridge.api.UpdateMeRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -104,7 +107,22 @@ data class BridgeSettingsUiState(
     // --- Privacy ---
     /** Whether recent plays (title/artist only) are visible to other signed-in users via `/social/activity` and `/social/discover` -- see `Settings -> Discover`'s Trending/Community tabs. */
     val shareListeningActivity: Boolean = false,
-    val isUpdatingPrivacy: Boolean = false
+    val isUpdatingPrivacy: Boolean = false,
+
+    // --- Two-factor setup (enabling/disabling TOTP, distinct from the login-time completion above) ---
+    val isTwoFactorEnabled: Boolean = false,
+    val isLoadingTwoFactorStatus: Boolean = false,
+    /** Non-null only while a fresh setup is in progress (between "Enable 2FA" and either a successful verify or Cancel). */
+    val twoFactorSetup: TwoFactorSetupResponse? = null,
+    val twoFactorSetupQrBitmap: android.graphics.Bitmap? = null,
+    val twoFactorSetupCodeInput: String = "",
+    val isStartingTwoFactorSetup: Boolean = false,
+    val isVerifyingTwoFactorSetup: Boolean = false,
+    val twoFactorSetupError: String? = null,
+    val twoFactorDisablePasswordInput: String = "",
+    val isDisablingTwoFactor: Boolean = false,
+    val twoFactorDisableError: String? = null,
+    val showTwoFactorDisableConfirm: Boolean = false
 )
 
 @HiltViewModel
@@ -152,6 +170,7 @@ class BridgeSettingsViewModel @Inject constructor(
         }
         loadSessions()
         loadAvatar(user.id)
+        loadTwoFactorStatus()
     }
 
     fun setShareListeningActivity(enabled: Boolean) {
@@ -597,6 +616,148 @@ class BridgeSettingsViewModel @Inject constructor(
         }
     }
 
+    // --- Two-factor setup (enable/disable) ---------------------------------
+
+    fun loadTwoFactorStatus() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingTwoFactorStatus = true) }
+            val response = runCatching { authApi.getTwoFactorStatus() }.getOrNull()
+            val enabled = if (response?.isSuccessful == true) response.body()?.enabled ?: false else _uiState.value.isTwoFactorEnabled
+            _uiState.update { it.copy(isLoadingTwoFactorStatus = false, isTwoFactorEnabled = enabled) }
+        }
+    }
+
+    /** Requests a fresh secret + otpauth URL and enters the "scan or enter manually, then confirm a code" state. */
+    fun startTwoFactorSetup() {
+        if (_uiState.value.isStartingTwoFactorSetup) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isStartingTwoFactorSetup = true, twoFactorSetupError = null) }
+            try {
+                val response = authApi.startTwoFactorSetup()
+                if (response.isSuccessful) {
+                    val setup = response.body()
+                    _uiState.update {
+                        it.copy(
+                            isStartingTwoFactorSetup = false,
+                            twoFactorSetup = setup,
+                            twoFactorSetupQrBitmap = setup?.otpauthUrl?.let(::renderQrBitmap),
+                            twoFactorSetupCodeInput = ""
+                        )
+                    }
+                } else {
+                    _uiState.update { it.copy(isStartingTwoFactorSetup = false, twoFactorSetupError = extractErrorMessage(response)) }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isStartingTwoFactorSetup = false, twoFactorSetupError = "Something went wrong. Check your connection.")
+                }
+            }
+        }
+    }
+
+    fun onTwoFactorSetupCodeChanged(value: String) {
+        _uiState.update { it.copy(twoFactorSetupCodeInput = value.filter { c -> c.isDigit() }.take(6), twoFactorSetupError = null) }
+    }
+
+    /** Backs out of an in-progress setup without calling the server -- the secret from [startTwoFactorSetup] simply goes unused. */
+    fun cancelTwoFactorSetup() {
+        _uiState.update {
+            it.copy(twoFactorSetup = null, twoFactorSetupQrBitmap = null, twoFactorSetupCodeInput = "", twoFactorSetupError = null)
+        }
+    }
+
+    fun verifyTwoFactorSetup() {
+        val state = _uiState.value
+        if (state.isVerifyingTwoFactorSetup) return
+        if (state.twoFactorSetupCodeInput.length != 6) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isVerifyingTwoFactorSetup = true, twoFactorSetupError = null) }
+            try {
+                val response = authApi.verifyTwoFactorSetup(TwoFactorVerifyRequest(code = state.twoFactorSetupCodeInput))
+                if (response.isSuccessful) {
+                    _uiState.update {
+                        it.copy(
+                            isVerifyingTwoFactorSetup = false,
+                            isTwoFactorEnabled = true,
+                            twoFactorSetup = null,
+                            twoFactorSetupQrBitmap = null,
+                            twoFactorSetupCodeInput = ""
+                        )
+                    }
+                } else {
+                    _uiState.update { it.copy(isVerifyingTwoFactorSetup = false, twoFactorSetupError = extractErrorMessage(response)) }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isVerifyingTwoFactorSetup = false, twoFactorSetupError = "Something went wrong. Check your connection.")
+                }
+            }
+        }
+    }
+
+    fun onTwoFactorDisablePasswordChanged(value: String) {
+        _uiState.update { it.copy(twoFactorDisablePasswordInput = value, twoFactorDisableError = null) }
+    }
+
+    fun requestDisableTwoFactorConfirm() {
+        if (_uiState.value.twoFactorDisablePasswordInput.isBlank()) {
+            _uiState.update { it.copy(twoFactorDisableError = "Enter your password to confirm.") }
+            return
+        }
+        _uiState.update { it.copy(showTwoFactorDisableConfirm = true) }
+    }
+
+    fun cancelDisableTwoFactorConfirm() {
+        _uiState.update { it.copy(showTwoFactorDisableConfirm = false) }
+    }
+
+    fun confirmDisableTwoFactor() {
+        val state = _uiState.value
+        if (state.isDisablingTwoFactor) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDisablingTwoFactor = true, twoFactorDisableError = null) }
+            try {
+                val response = authApi.disableTwoFactor(TwoFactorDisableRequest(password = state.twoFactorDisablePasswordInput))
+                if (response.isSuccessful) {
+                    _uiState.update {
+                        it.copy(
+                            isDisablingTwoFactor = false,
+                            isTwoFactorEnabled = false,
+                            showTwoFactorDisableConfirm = false,
+                            twoFactorDisablePasswordInput = ""
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(isDisablingTwoFactor = false, showTwoFactorDisableConfirm = false, twoFactorDisableError = extractErrorMessage(response))
+                    }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isDisablingTwoFactor = false, showTwoFactorDisableConfirm = false, twoFactorDisableError = "Something went wrong. Check your connection.")
+                }
+            }
+        }
+    }
+
+    /** Renders [content] (an `otpauth://` URI) as a 240dp-ish square black/white QR bitmap via ZXing's encoder -- no camera/scanning dependency needed, just the writer. */
+    private fun renderQrBitmap(content: String): Bitmap? = runCatching {
+        val size = 480
+        val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(
+            content,
+            com.google.zxing.BarcodeFormat.QR_CODE,
+            size,
+            size
+        )
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bitmap.setPixel(x, y, if (matrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+        bitmap
+    }.getOrNull()
+
     fun logout() {
         if (_uiState.value.isLoggingOut) return
         viewModelScope.launch {
@@ -633,7 +794,15 @@ class BridgeSettingsViewModel @Inject constructor(
                     deleteAccountError = null,
                     showDeleteAccountConfirm = false,
                     authError = null,
-                    authInfo = null
+                    authInfo = null,
+                    isTwoFactorEnabled = false,
+                    twoFactorSetup = null,
+                    twoFactorSetupQrBitmap = null,
+                    twoFactorSetupCodeInput = "",
+                    twoFactorSetupError = null,
+                    twoFactorDisablePasswordInput = "",
+                    twoFactorDisableError = null,
+                    showTwoFactorDisableConfirm = false
                 )
             }
         }

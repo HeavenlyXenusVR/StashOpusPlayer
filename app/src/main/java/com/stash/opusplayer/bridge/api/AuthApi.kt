@@ -51,6 +51,33 @@ data class DeleteAccountRequest(
     val password: String
 )
 
+/** Body for POST /auth/2fa/verify -- the 6-digit TOTP code from the authenticator app, confirming the secret returned by [AuthApi.startTwoFactorSetup] was scanned/entered correctly. */
+data class TwoFactorVerifyRequest(
+    val code: String
+)
+
+/** Body for POST /auth/2fa/disable -- password is confirmation, matching [DeleteAccountRequest]'s shape. */
+data class TwoFactorDisableRequest(
+    val password: String
+)
+
+/** Response of GET /auth/2fa/status (main.py ~L4954). */
+data class TwoFactorStatusResponse(
+    val enabled: Boolean = false
+)
+
+/**
+ * Response of POST /auth/2fa/setup (main.py ~L4969). [secret] is the raw
+ * base32 TOTP secret -- shown as a manual-entry fallback for authenticator
+ * apps that can't scan a QR code, same as Lumisound's own UI treats it (not
+ * an afterthought). [otpauthUrl] is an `otpauth://totp/...` URI, rendered as
+ * a QR code client-side.
+ */
+data class TwoFactorSetupResponse(
+    val secret: String,
+    @SerializedName("otpauth_url") val otpauthUrl: String
+)
+
 // --- Response bodies ---------------------------------------------------------
 
 /**
@@ -120,7 +147,6 @@ data class PrivacyUpdateRequest(
  * (`get_current_user`, main.py ~L772), tagged `X-Bridge-Auth-Mode: user` for
  * [com.stash.opusplayer.bridge.BridgeAuthInterceptor].
  *
- * NOT modeled in this pass (left for follow-up): /auth/2fa/setup|verify|disable.
  */
 interface AuthApi {
 
@@ -186,4 +212,23 @@ interface AuthApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @PUT("user/privacy")
     suspend fun updatePrivacy(@Body body: PrivacyUpdateRequest): Response<Unit>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("auth/2fa/status")
+    suspend fun getTwoFactorStatus(): Response<TwoFactorStatusResponse>
+
+    /** No body. Generates a fresh secret every call -- the previous secret becomes invalid, matching the server's own semantics (calling this again before finishing [verifyTwoFactorSetup] just restarts setup). */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("auth/2fa/setup")
+    suspend fun startTwoFactorSetup(): Response<TwoFactorSetupResponse>
+
+    /** 400 if setup was never started, or if [TwoFactorVerifyRequest.code] is wrong. Success enables 2FA server-side immediately. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("auth/2fa/verify")
+    suspend fun verifyTwoFactorSetup(@Body body: TwoFactorVerifyRequest): Response<Unit>
+
+    /** 401 if the password is wrong. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("auth/2fa/disable")
+    suspend fun disableTwoFactor(@Body body: TwoFactorDisableRequest): Response<Unit>
 }

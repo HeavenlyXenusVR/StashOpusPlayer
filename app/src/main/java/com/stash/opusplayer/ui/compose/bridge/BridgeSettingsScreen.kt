@@ -88,6 +88,14 @@ fun BridgeSettingsScreen(
         onRequestDeleteAccountConfirm = viewModel::requestDeleteAccountConfirm,
         onCancelDeleteAccountConfirm = viewModel::cancelDeleteAccountConfirm,
         onConfirmDeleteAccount = viewModel::confirmDeleteAccount,
+        onStartTwoFactorSetup = viewModel::startTwoFactorSetup,
+        onTwoFactorSetupCodeChanged = viewModel::onTwoFactorSetupCodeChanged,
+        onVerifyTwoFactorSetup = viewModel::verifyTwoFactorSetup,
+        onCancelTwoFactorSetup = viewModel::cancelTwoFactorSetup,
+        onTwoFactorDisablePasswordChanged = viewModel::onTwoFactorDisablePasswordChanged,
+        onRequestDisableTwoFactorConfirm = viewModel::requestDisableTwoFactorConfirm,
+        onCancelDisableTwoFactorConfirm = viewModel::cancelDisableTwoFactorConfirm,
+        onConfirmDisableTwoFactor = viewModel::confirmDisableTwoFactor,
         modifier = modifier
     )
 }
@@ -125,6 +133,14 @@ private fun BridgeSettingsContent(
     onCancelDeleteAccountConfirm: () -> Unit,
     onConfirmDeleteAccount: () -> Unit,
     onShareListeningActivityChanged: (Boolean) -> Unit,
+    onStartTwoFactorSetup: () -> Unit,
+    onTwoFactorSetupCodeChanged: (String) -> Unit,
+    onVerifyTwoFactorSetup: () -> Unit,
+    onCancelTwoFactorSetup: () -> Unit,
+    onTwoFactorDisablePasswordChanged: (String) -> Unit,
+    onRequestDisableTwoFactorConfirm: () -> Unit,
+    onCancelDisableTwoFactorConfirm: () -> Unit,
+    onConfirmDisableTwoFactor: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -222,6 +238,30 @@ private fun BridgeSettingsContent(
                 onNewPasswordChanged = onNewPasswordChanged,
                 onConfirmPasswordChanged = onConfirmPasswordChanged,
                 onSubmit = onChangePassword
+            )
+
+            Divider()
+            TwoFactorAuthSection(
+                isEnabled = state.isTwoFactorEnabled,
+                isLoadingStatus = state.isLoadingTwoFactorStatus,
+                setup = state.twoFactorSetup,
+                qrBitmap = state.twoFactorSetupQrBitmap,
+                setupCode = state.twoFactorSetupCodeInput,
+                isStartingSetup = state.isStartingTwoFactorSetup,
+                isVerifyingSetup = state.isVerifyingTwoFactorSetup,
+                setupError = state.twoFactorSetupError,
+                disablePassword = state.twoFactorDisablePasswordInput,
+                isDisabling = state.isDisablingTwoFactor,
+                disableError = state.twoFactorDisableError,
+                showDisableConfirm = state.showTwoFactorDisableConfirm,
+                onStartSetup = onStartTwoFactorSetup,
+                onSetupCodeChanged = onTwoFactorSetupCodeChanged,
+                onVerifySetup = onVerifyTwoFactorSetup,
+                onCancelSetup = onCancelTwoFactorSetup,
+                onDisablePasswordChanged = onTwoFactorDisablePasswordChanged,
+                onRequestDisableConfirm = onRequestDisableTwoFactorConfirm,
+                onCancelDisableConfirm = onCancelDisableTwoFactorConfirm,
+                onConfirmDisable = onConfirmDisableTwoFactor
             )
 
             Divider()
@@ -432,6 +472,181 @@ private fun ChangePasswordSection(
                 }
             }
         }
+    }
+}
+
+/**
+ * Ported from `TwoFactorAuthView.swift` -- three states matching the
+ * iOS state machine exactly: disabled (offer "Enable 2FA"), setup
+ * in-progress ([setup] non-null: QR + manual-entry secret + 6-digit
+ * confirm), and enabled (password-gated disable).
+ */
+@Composable
+private fun TwoFactorAuthSection(
+    isEnabled: Boolean,
+    isLoadingStatus: Boolean,
+    setup: com.stash.opusplayer.bridge.api.TwoFactorSetupResponse?,
+    qrBitmap: android.graphics.Bitmap?,
+    setupCode: String,
+    isStartingSetup: Boolean,
+    isVerifyingSetup: Boolean,
+    setupError: String?,
+    disablePassword: String,
+    isDisabling: Boolean,
+    disableError: String?,
+    showDisableConfirm: Boolean,
+    onStartSetup: () -> Unit,
+    onSetupCodeChanged: (String) -> Unit,
+    onVerifySetup: () -> Unit,
+    onCancelSetup: () -> Unit,
+    onDisablePasswordChanged: (String) -> Unit,
+    onRequestDisableConfirm: () -> Unit,
+    onCancelDisableConfirm: () -> Unit,
+    onConfirmDisable: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(text = "Two-Factor Authentication", style = MaterialTheme.typography.titleMedium)
+
+            when {
+                setup != null -> {
+                    Text(
+                        text = "Scan this QR code with your authenticator app, or enter the key manually, then confirm with a 6-digit code.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    qrBitmap?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "2FA setup QR code",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = setup.secret,
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    OutlinedTextField(
+                        value = setupCode,
+                        onValueChange = onSetupCodeChanged,
+                        label = { Text("6-digit code") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    setupError?.let {
+                        Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onVerifySetup,
+                            enabled = !isVerifyingSetup && setupCode.length == 6,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            if (isVerifyingSetup) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("Verify & Enable")
+                            }
+                        }
+                        TextButton(onClick = onCancelSetup) { Text("Cancel") }
+                    }
+                }
+
+                isEnabled -> {
+                    Text(
+                        text = "Two-factor authentication is on. Enter your password to turn it off.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = disablePassword,
+                        onValueChange = onDisablePasswordChanged,
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    disableError?.let {
+                        Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    Button(
+                        onClick = onRequestDisableConfirm,
+                        enabled = !isDisabling && disablePassword.isNotBlank(),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isDisabling) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onError
+                            )
+                        } else {
+                            Text("Disable 2FA")
+                        }
+                    }
+                }
+
+                else -> {
+                    Text(
+                        text = "Require a code from an authenticator app in addition to your password when signing in.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = onStartSetup,
+                        enabled = !isStartingSetup && !isLoadingStatus,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isStartingSetup) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text("Enable 2FA")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDisableConfirm) {
+        AlertDialog(
+            onDismissRequest = onCancelDisableConfirm,
+            title = { Text("Disable two-factor authentication?") },
+            text = { Text("Your account will only require your password to sign in.") },
+            confirmButton = {
+                TextButton(onClick = onConfirmDisable) {
+                    Text("Disable 2FA", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCancelDisableConfirm) { Text("Cancel") }
+            }
+        )
     }
 }
 

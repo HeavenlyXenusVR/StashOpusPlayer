@@ -532,6 +532,23 @@ confirmed by directory/endpoint survey — not touched by this branch:
   explanatory toast rather than silently no-opping. Purely local/on-device;
   no bridge dependency.
 
+  **Two-Factor Authentication setup is now ported** too (`Settings ->
+  Bridge Settings -> Two-Factor Authentication`, in
+  `BridgeSettingsScreen.kt`/`BridgeSettingsViewModel.kt`), ported from
+  `AccountService+TwoFactorAuth.swift`/`TwoFactorAuthView.swift`. This is
+  distinct from -- and was previously the only 2FA piece ported -- the
+  login-time 2FA *completion* step (entering a code during sign-in,
+  `POST /auth/2fa/login`); this chunk adds actually turning it on/off:
+  `GET /auth/2fa/status`, `POST /auth/2fa/setup` (returns a fresh secret +
+  `otpauth://` URL), `POST /auth/2fa/verify` (confirms a 6-digit code,
+  enables), `POST /auth/2fa/disable` (password-gated). The `otpauth://`
+  URL is rendered as a scannable QR code client-side via ZXing's
+  `QRCodeWriter` (new dependency: `com.google.zxing:core`, encoder only --
+  no camera/scanning code, so not `zxing-android-embedded`); the raw
+  secret is also shown as selectable text underneath, matching how both
+  the server and Lumisound's own UI already treat manual entry as a
+  first-class alternative to scanning, not an afterthought.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

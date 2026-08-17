@@ -217,6 +217,12 @@ dependencies {
     // Settings toggle (fingerprint/face re-auth on app resume).
     implementation 'androidx.biometric:biometric:1.1.0'
 
+    // ZXing core — used by BridgeSettingsViewModel's Two-Factor Auth setup
+    // to render the otpauth:// URI as a scannable QR code. `core` only (not
+    // `zxing-android-embedded`): no camera/scanning needed here, just the
+    // QRCodeWriter encoder, so the lighter dependency is enough.
+    implementation 'com.google.zxing:core:3.5.3'
+
     // Jetpack Compose (new screens only -- Library/Now Playing/Settings fragments
     // stay View/XML for now, migrated incrementally in later work). BOM version
     // must stay compatible with the pinned Compose Compiler 1.5.3 above.
