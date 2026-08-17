@@ -79,6 +79,19 @@ data class PodcastEpisodeProgress(
 )
 
 /**
+ * One chapter of a "Podcasting 2.0" chapters JSON file (main.py
+ * ~L17528-17532, `_fetch_podcast_chapters_sync`). [startTimeSeconds] is a
+ * timestamp within the episode, not a duration -- seek the player directly
+ * to it. [imageUrl] (a per-chapter image, distinct from the episode/show
+ * artwork) is deliberately not modeled/rendered here to keep the chapter
+ * list a plain text list, matching the trimmed-down scope of this pass.
+ */
+data class PodcastChapter(
+    @SerializedName("start_time_seconds") val startTimeSeconds: Double,
+    val title: String
+)
+
+/**
  * One result of GET /podcasts/search or GET /podcasts/trending (main.py
  * ~L17712/17782) -- both iTunes-Search-API-backed, both return this exact
  * same shape. [feedUrl] is directly usable as-is with [PodcastsApi.subscribe].
@@ -95,13 +108,13 @@ data class PodcastSearchResult(
 )
 
 /**
- * Podcast subscriptions + episode listing + playback-progress sync, ported
- * from the podcast slice of Lumisound's account services (a full podcast
- * subsystem also including chapters, OPML import/export, and search/
- * trending discovery -- none of that is modeled here). Distinct from --
- * and unrelated to -- artist channel subscriptions ([SubscriptionsApi]):
- * this is RSS-feed-based, not YouTube-channel-based, and episodes play
- * from a direct enclosure URL with no yt-dlp/bridge-stream-resolve step
+ * Podcast subscriptions + episode listing + playback-progress sync +
+ * chapters + search/trending discovery, ported from the podcast slice of
+ * Lumisound's account services (a full podcast subsystem also including
+ * OPML import/export -- not modeled here). Distinct from -- and unrelated
+ * to -- artist channel subscriptions ([SubscriptionsApi]): this is
+ * RSS-feed-based, not YouTube-channel-based, and episodes play from a
+ * direct enclosure URL with no yt-dlp/bridge-stream-resolve step
  * at all.
  */
 interface PodcastsApi {
@@ -144,6 +157,11 @@ interface PodcastsApi {
         @Query("feed_url") feedUrl: String? = null,
         @Query("limit") limit: Int = 50
     ): Response<List<PodcastEpisodeProgress>>
+
+    /** [chaptersUrl] comes from [PodcastEpisode.chaptersUrl] -- null there means the episode has no Podcasting 2.0 chapters file, don't call this. A separate on-demand call per the bridge's own doc comment, not inlined into the episode list. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/podcasts/chapters")
+    suspend fun getChapters(@Query("chapters_url") chaptersUrl: String): Response<List<PodcastChapter>>
 
     /** Not under `/user/` (matches the bridge's own routing) but still JWT-gated like everything else here. */
     @Headers("X-Bridge-Auth-Mode: user")

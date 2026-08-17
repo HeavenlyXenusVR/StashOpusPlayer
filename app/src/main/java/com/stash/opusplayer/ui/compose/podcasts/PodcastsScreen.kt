@@ -282,11 +282,56 @@ private fun EpisodesContent(
                     episode = episode,
                     isPlaying = state.playingGuid == episode.guid,
                     progress = state.progressByGuid[episode.guid],
-                    onClick = { viewModel.playEpisode(episode) }
+                    onClick = { viewModel.playEpisode(episode) },
+                    onChaptersClick = { viewModel.openChapters(episode) }
                 )
                 Divider()
             }
         }
+    }
+
+    if (state.chaptersEpisodeGuid != null) {
+        val chapterEpisode = state.episodes.firstOrNull { it.guid == state.chaptersEpisodeGuid }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::closeChapters,
+            title = { Text("Chapters") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    when {
+                        state.isLoadingChapters -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        state.chaptersError != null -> Text(text = state.chaptersError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        state.chapters.isEmpty() -> Text(
+                            text = "No chapters found.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> state.chapters.forEach { chapter ->
+                            val secs = chapter.startTimeSeconds.toInt()
+                            val timeText = if (secs >= 3600) {
+                                "%d:%02d:%02d".format(secs / 3600, (secs % 3600) / 60, secs % 60)
+                            } else {
+                                "%d:%02d".format(secs / 60, secs % 60)
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = chapterEpisode != null) {
+                                        chapterEpisode?.let { viewModel.playFromChapter(it, chapter) }
+                                    }
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(text = chapter.title, style = MaterialTheme.typography.bodyMedium)
+                                Text(text = timeText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::closeChapters) { Text("Close") }
+            }
+        )
     }
 }
 
@@ -295,7 +340,8 @@ private fun EpisodeRow(
     episode: PodcastEpisode,
     isPlaying: Boolean,
     progress: com.stash.opusplayer.bridge.api.PodcastEpisodeProgress?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onChaptersClick: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
@@ -328,6 +374,9 @@ private fun EpisodeRow(
                     )
                 }
             }
+        }
+        if (episode.chaptersUrl != null) {
+            TextButton(onClick = onChaptersClick) { Text("Chapters") }
         }
         if (isPlaying) {
             Text(text = "▶", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.stash.opusplayer.StashOpusApplication
+import com.stash.opusplayer.bridge.api.PodcastChapter
 import com.stash.opusplayer.bridge.api.PodcastEpisode
 import com.stash.opusplayer.bridge.api.PodcastEpisodeProgress
 import com.stash.opusplayer.bridge.api.PodcastEpisodeProgressRequest
@@ -89,7 +90,12 @@ class PodcastsViewModel @Inject constructor(
         val episodesError: String? = null,
         val progressByGuid: Map<String, PodcastEpisodeProgress> = emptyMap(),
 
-        val playingGuid: String? = null
+        val playingGuid: String? = null,
+
+        val chaptersEpisodeGuid: String? = null,
+        val isLoadingChapters: Boolean = false,
+        val chapters: List<PodcastChapter> = emptyList(),
+        val chaptersError: String? = null
     )
 
     private var progressPushJob: Job? = null
@@ -204,6 +210,22 @@ class PodcastsViewModel @Inject constructor(
      * and this same episode keeps playing.
      */
     fun playEpisode(episode: PodcastEpisode) {
+        val savedProgress = _uiState.value.progressByGuid[episode.guid]
+        val seekSeconds = if (savedProgress != null && !savedProgress.completed && savedProgress.positionSeconds > 5) {
+            savedProgress.positionSeconds
+        } else {
+            null
+        }
+        playEpisodeInternal(episode, seekSeconds)
+    }
+
+    /** Seeks to [chapter]'s start time, deliberately ignoring any saved progress -- resuming from a chapter mark is an explicit choice, not a continuation, matching Lumisound's own `PodcastChaptersSheet.playFrom` exactly. */
+    fun playFromChapter(episode: PodcastEpisode, chapter: PodcastChapter) {
+        closeChapters()
+        playEpisodeInternal(episode, chapter.startTimeSeconds)
+    }
+
+    private fun playEpisodeInternal(episode: PodcastEpisode, seekSeconds: Double?) {
         val feedUrl = _uiState.value.selectedFeedUrl ?: return
         val title = episode.title.orEmpty()
         _uiState.update { it.copy(playingGuid = episode.guid) }
@@ -220,12 +242,34 @@ class PodcastsViewModel @Inject constructor(
         val playerManager = (appContext.applicationContext as? StashOpusApplication)?.playerManager
         playerManager?.playSong(song)
 
-        val savedProgress = _uiState.value.progressByGuid[episode.guid]
-        if (savedProgress != null && !savedProgress.completed && savedProgress.positionSeconds > 5) {
-            playerManager?.seekTo((savedProgress.positionSeconds * 1000).toLong())
+        if (seekSeconds != null) {
+            playerManager?.seekTo((seekSeconds * 1000).toLong())
         }
 
         startProgressPushLoop(feedUrl = feedUrl, guid = episode.guid, title = title)
+    }
+
+    // --- Chapters -------------------------------------------------------------
+
+    fun openChapters(episode: PodcastEpisode) {
+        val chaptersUrl = episode.chaptersUrl ?: return
+        _uiState.update { it.copy(chaptersEpisodeGuid = episode.guid, chapters = emptyList(), chaptersError = null, isLoadingChapters = true) }
+        viewModelScope.launch {
+            try {
+                val response = podcastsApi.getChapters(chaptersUrl)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingChapters = false, chapters = response.body().orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingChapters = false, chaptersError = "Couldn't load chapters (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingChapters = false, chaptersError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    fun closeChapters() {
+        _uiState.update { it.copy(chaptersEpisodeGuid = null, chapters = emptyList()) }
     }
 
     /**

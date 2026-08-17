@@ -285,9 +285,8 @@ confirmed by directory/endpoint survey — not touched by this branch:
   playable as-is through the shared player -- unlike every YouTube-
   sourced track list elsewhere in this app, which all need the
   search-or-discover -> resolve -> play two-step. Deliberately trimmed
-  from the bridge's full podcast subsystem: chapters
-  (`GET /user/podcasts/chapters`) and OPML import/export are real,
-  separately-portable features not attempted in this pass.
+  from the bridge's full podcast subsystem: OPML import/export is a
+  real, separately-portable feature not attempted in this pass.
 
   **Playback-progress sync (resume-where-you-left-off) was added in a
   follow-up pass** (`PUT`/`GET /user/podcasts/episode-progress`).
@@ -319,6 +318,15 @@ confirmed by directory/endpoint survey — not touched by this branch:
   this, a podcast could only be added by already knowing its raw RSS
   feed URL -- this is the first real podcast discovery surface in the
   app.
+
+  **Podcast chapters were added in a follow-up pass** too (`GET
+  /user/podcasts/chapters`) -- a "Chapters" button on any episode that
+  has a Podcasting 2.0 chapters file, opening a dialog listing them;
+  tapping a chapter plays the episode from that timestamp, deliberately
+  ignoring any saved resume position (jumping to a chapter mark is an
+  explicit choice, not a continuation), matching Lumisound's own
+  `PodcastChaptersSheet.playFrom` exactly. This closes out the podcast
+  feature set except OPML import/export.
 
   Still unbuilt: cross-device sync, push notifications, weekly mix
   (blocked on an entirely separate "personal cloud music library" API
