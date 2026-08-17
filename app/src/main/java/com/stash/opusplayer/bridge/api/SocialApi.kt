@@ -7,6 +7,7 @@ import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /** One row of `list_friends()`'s response (main.py ~L13559). */
 data class BridgeFriend(
@@ -62,17 +63,48 @@ data class PresenceUpdate(
     @SerializedName("going_offline") val goingOffline: Boolean = false
 )
 
+/** One row of GET /api/social/activity/friends's `activity` array (main.py ~L16317). [kind] is always `"played"` or `"favorited"`; the server gives no per-row id, so callers needing a stable list key should synthesize one from userId+kind+at+title. */
+data class FriendActivityEntry(
+    @SerializedName("user_id") val userId: String,
+    val username: String,
+    @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    val kind: String,
+    val title: String? = null,
+    val artist: String? = null,
+    val at: String? = null
+)
+
+data class FriendsActivityResponse(
+    val activity: List<FriendActivityEntry> = emptyList()
+)
+
+/** One row of GET /api/social/friends/leaderboard's `leaderboard` array (main.py ~L16793) -- already ranked by [playCount] descending server-side. */
+data class FriendLeaderboardEntry(
+    @SerializedName("user_id") val userId: String,
+    val username: String,
+    @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    @SerializedName("play_count") val playCount: Int = 0
+)
+
+data class FriendsLeaderboardResponse(
+    val leaderboard: List<FriendLeaderboardEntry> = emptyList()
+)
+
 /**
- * A representative subset of `/api/social/…` — friends list/requests plus a
- * presence heartbeat. All require the user's JWT (`get_current_user`),
- * tagged `X-Bridge-Auth-Mode: user`.
+ * A representative subset of `/api/social/…` — friends list/requests, a
+ * presence heartbeat, and the friends activity feed/leaderboard. All
+ * require the user's JWT (`get_current_user`), tagged
+ * `X-Bridge-Auth-Mode: user`.
  *
  * NOT modeled in this pass (left for follow-up): profile endpoints
- * (/api/social/profile/…, including avatar/banner upload and pinned tracks),
- * blocking (/api/social/block*), friend nicknames/tags/leaderboard,
- * presence-for-friends / listening-together, profile comments,
- * compatibility, discovery (/social/discover, /social/similar-listeners,
- * /social/trending-by-energy), and /social/activity(+/friends).
+ * (/api/social/profile/…, including avatar/banner upload and pinned tracks
+ * — banner + guestbook comments ARE modeled, see
+ * [com.stash.opusplayer.bridge.api.SocialProfileApi]), blocking
+ * (/api/social/block*), friend nicknames/tags, presence-for-friends /
+ * listening-together, compatibility, and discovery (/social/discover,
+ * /social/similar-listeners, /social/trending-by-energy).
  */
 interface SocialApi {
 
@@ -99,4 +131,17 @@ interface SocialApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @POST("api/social/presence")
     suspend fun updatePresence(@Body body: PresenceUpdate): Response<BridgeOkResponse>
+
+    /** Merges recent plays + favorites from all of the caller's friends, newest first. Empty immediately if the caller has no friends -- no error, matches the server's own short-circuit. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/social/activity/friends")
+    suspend fun getFriendsActivity(@Query("limit") limit: Int = 30): Response<FriendsActivityResponse>
+
+    /** [days]: trailing window (max 30), [limit]: top-N (max 30) -- a ranking, not a browsable/paginated list. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/social/friends/leaderboard")
+    suspend fun getFriendsLeaderboard(
+        @Query("days") days: Int = 7,
+        @Query("limit") limit: Int = 10
+    ): Response<FriendsLeaderboardResponse>
 }

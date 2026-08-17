@@ -22,6 +22,7 @@ import com.stash.opusplayer.ui.fragments.settings.DiscordVerificationFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscordWebhookFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscoveryFragment
 import com.stash.opusplayer.ui.fragments.settings.FolderBackupFragment
+import com.stash.opusplayer.ui.fragments.settings.FriendActivityFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
@@ -254,6 +255,14 @@ class SettingsFragment : Fragment() {
             summary = "Friend requests and presence, shared with your Lumisound account."
         ) {
             openSettingsScreen(FriendsHostFragment(), "Friends")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Friend Activity",
+            summary = "Most-active leaderboard and a recent-plays feed from your friends."
+        ) {
+            openSettingsScreen(FriendActivityFragment(), "Friend Activity")
         }
 
         addSettingsTile(

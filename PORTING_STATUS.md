@@ -242,6 +242,20 @@ confirmed by directory/endpoint survey — not touched by this branch:
   all of that too, but only the fields this screen actually reads are
   modeled (see `PublicSocialProfile`'s doc comment); the rest is real
   future scope, not silently dropped.
+
+  **Activity feed and leaderboard are now ported** too (`Settings ->
+  Friend Activity`, `GET /api/social/activity/friends`,
+  `GET /api/social/friends/leaderboard`), closing out the social
+  profile bundle. A "Most Active This Week" card (top 5 of the
+  server's own top-10, ranked by play count over its default 7-day
+  window -- no client-side control to change that window, matching
+  Lumisound's own `ActivitySegmentView`) plus a merged plays+favorites
+  feed from all friends, newest first. Both endpoints are read-only,
+  gated server-side by each friend's own `share_now_playing` toggle
+  (a friend who disabled it is excluded from both, not just presence),
+  and return nothing (not an error) if the caller has no friends yet.
+  Tapping a leaderboard entry opens that friend's `PublicProfileFragment`
+  from the previous chunk; activity feed rows are inert, matching iOS.
   `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
