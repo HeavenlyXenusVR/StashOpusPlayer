@@ -382,6 +382,7 @@ class SettingsFragment : Fragment() {
             } else {
                 AppLockManager.setEnabled(requireContext(), enabled)
             }
+            com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
         }
         if (!AppLockManager.isBiometricAvailable(requireContext())) {
             appLockSwitch.isChecked = false

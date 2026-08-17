@@ -62,6 +62,9 @@ object PrefsKeys {
 
     // Privacy - App Lock
     const val APP_LOCK_ENABLED = "app_lock_enabled" // Boolean
+
+    // Cross-device settings sync -- see com.stash.opusplayer.bridge.SettingsSyncManager
+    const val SYNC_ANDROID_SETTINGS_BOOTSTRAPPED = "sync_android_settings_bootstrapped" // Boolean
 }
 
 object PrefsUtils {

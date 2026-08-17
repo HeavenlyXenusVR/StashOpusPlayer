@@ -281,19 +281,66 @@ data class AddPlaylistTrackResponse(
 )
 
 /**
- * Playlists + favorites + backups + history/achievements -- the "basic
- * sync" subset covered in this pass. All require the user's JWT
- * (`get_current_user`), tagged `X-Bridge-Auth-Mode: user`.
+ * Response of GET /user/sync (main.py's `_build_sync_snapshot`) and shape
+ * echoed back on POST. [favorites]/[playlists] are deliberately typed as
+ * opaque [com.google.gson.JsonElement] rather than fully modeled structs --
+ * see [SyncPushRequest]'s doc for why: this client only ever echoes them
+ * back verbatim on push, never constructs or reads into them, so there is
+ * zero risk of an incomplete field mapping silently dropping data on a
+ * round trip.
+ *
+ * Of the ~24 settings fields the bridge actually supports, only the ones
+ * with a real Android equivalent are modeled here: [themeColor] (accent
+ * color) and [extraSettingsJson] (this client's own Android-specific
+ * settings bag, namespaced under an `"android"` key inside the same JSON
+ * string iOS uses for ITS catch-all extras -- see
+ * [com.stash.opusplayer.bridge.SettingsSyncManager]'s doc for the merge
+ * strategy). Fields with no Android equivalent at all (`vinyl_disc_enabled`,
+ * `car_mode_enabled`, `now_playing_seeker_style`, `bg_shuffle_interval`,
+ * etc.) are NOT modeled and always sent as `null` on push -- the server's
+ * `CASE WHEN %s IS NULL THEN <existing> ELSE %s END` upsert (confirmed
+ * against main.py directly) preserves whatever iOS last set for those,
+ * so omitting them here never clobbers iOS's own state.
+ */
+data class SyncSnapshot(
+    val favorites: com.google.gson.JsonElement? = null,
+    val playlists: com.google.gson.JsonElement? = null,
+    @SerializedName("theme_color") val themeColor: String? = null,
+    @SerializedName("extra_settings_json") val extraSettingsJson: String? = null
+)
+
+/**
+ * Body for POST /user/sync. **[favorites]/[playlists] are NOT optional and
+ * have NO safe default** -- confirmed against main.py's `sync_push`
+ * directly: the handler unconditionally `DELETE`s the user's existing
+ * favorites/playlists rows before checking whether the request supplied
+ * any to re-insert, so an omitted (or empty-list) field wipes them with no
+ * restore. This is a fundamentally different safety model than the other
+ * settings fields (which use preserve-if-null semantics) and is NOT a
+ * quirk this client can route around -- every caller of
+ * [SyncApi.postSync] MUST first [SyncApi.getSync] and pass its
+ * [SyncSnapshot.favorites]/[SyncSnapshot.playlists] straight through
+ * unmodified. [com.stash.opusplayer.bridge.SettingsSyncManager] is the
+ * only intended caller and does exactly this -- do not call
+ * [SyncApi.postSync] directly from anywhere else.
+ */
+data class SyncPushRequest(
+    val favorites: com.google.gson.JsonElement,
+    val playlists: com.google.gson.JsonElement,
+    @SerializedName("theme_color") val themeColor: String? = null,
+    @SerializedName("extra_settings_json") val extraSettingsJson: String? = null
+)
+
+/**
+ * Playlists + favorites + backups + history/achievements + cross-device
+ * settings sync. All require the user's JWT (`get_current_user`), tagged
+ * `X-Bridge-Auth-Mode: user`.
  *
  * GET/POST `/user/sync` (the iOS app's full cross-device settings sync) is
- * deliberately NOT modeled here: its push body (`SyncPushRequest`, main.py
- * ~L1707) is a large, iOS-app-specific settings blob (`vinyl_disc_enabled`,
- * `car_mode_enabled`, `now_playing_seeker_style`, `bg_shuffle_interval`,
- * etc.) that doesn't map onto this Android app's own settings model — pushing
- * it wholesale from this client would either silently drop fields or clobber
- * server state with meaningless defaults. A real Android /user/sync
- * integration needs its own field-by-field design, not a blind port of the
- * iOS request shape. Backups (`/user/backups*`) ARE modeled below, since
+ * now partially modeled -- see [SyncSnapshot]/[SyncPushRequest]'s docs for
+ * exactly which of its ~24 fields have a real Android equivalent and the
+ * critical favorites/playlists data-safety constraint on push. Backups
+ * (`/user/backups*`) ARE modeled below too, since
  * they only ever expose the favorites/playlists subset (never the
  * iOS-settings blob) — see [BridgeBackupSummary]/[RestoreBackupResponse].
  * `/user/history` and `/user/achievements` ARE modeled below too --
@@ -312,6 +359,16 @@ data class AddPlaylistTrackResponse(
  * `/user/stats`, `/user/settings`.
  */
 interface SyncApi {
+
+    /** See [SyncSnapshot]'s doc. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/sync")
+    suspend fun getSync(): Response<SyncSnapshot>
+
+    /** See [SyncPushRequest]'s doc -- callers MUST echo back a prior [getSync] response's favorites/playlists verbatim, never omit or synthesize them. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/sync")
+    suspend fun postSync(@Body body: SyncPushRequest): Response<Unit>
 
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("user/playlists")

@@ -80,6 +80,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     @javax.inject.Inject
     lateinit var discordLoginEvents: DiscordLoginEvents
 
+    @javax.inject.Inject
+    lateinit var settingsSyncManager: com.stash.opusplayer.bridge.SettingsSyncManager
+
     // Appearance customization
     private var appearanceReceiver: BroadcastReceiver? = null
     private lateinit var visualCustomizationManager: VisualCustomizationManager
@@ -156,6 +159,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         requestNotificationPermissionIfNeeded()
         handleDiscordVerifyDeepLink(intent)
         handleDiscordLoginDeepLink(intent)
+        settingsSyncManager.pullOnce()
 
         // Observe image download tracker to show top banner
         lifecycleScope.launch {

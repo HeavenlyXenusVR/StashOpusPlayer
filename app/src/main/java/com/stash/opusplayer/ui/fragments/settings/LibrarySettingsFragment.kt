@@ -114,6 +114,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     return
                 }
                 settings.edit().putInt(PrefsKeys.DEFAULT_SONGS_VIEW_COLUMNS, columnsForPosition(position)).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -134,6 +135,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     return
                 }
                 settings.edit().putInt(PrefsKeys.DEFAULT_FOLDERS_VIEW_COLUMNS, columnsForPosition(position)).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -154,6 +156,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     return
                 }
                 settings.edit().putInt(PrefsKeys.DEFAULT_FOLDER_DETAIL_VIEW_COLUMNS, columnsForPosition(position)).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit

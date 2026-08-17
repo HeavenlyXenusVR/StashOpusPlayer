@@ -746,6 +746,68 @@ confirmed by directory/endpoint survey — not touched by this branch:
   an explicit empty client ID (distinct from omitting the field), which
   the server treats as "clear the override."
 
+  **Cross-device settings sync is now ported** too
+  (`GET`/`POST /user/sync`, `com.stash.opusplayer.bridge.SettingsSyncManager`),
+  previously deliberately deferred (see `SyncApi.kt`'s old doc comment) --
+  the deferral reason was that iOS's push body is a large, iOS-app-shaped
+  settings blob (~24 fields: `vinyl_disc_enabled`, `car_mode_enabled`,
+  `now_playing_seeker_style`, etc.) with no 1:1 Android mapping, not a
+  technical blocker, so this pass designed a real field-by-field Android
+  integration instead of a blind port of the iOS request shape.
+
+  **Critical data-safety finding, confirmed against main.py directly
+  before writing any client code**: `POST /user/sync`'s `favorites`/
+  `playlists` fields are NOT optional and have no safe default --
+  `sync_push` unconditionally `DELETE`s the user's existing rows before
+  checking whether the request supplied any to re-insert, so a
+  settings-only push that omits them would silently wipe a user's
+  favorites and playlists. Every other field uses safe preserve-if-null
+  (`CASE WHEN %s IS NULL THEN <existing> ELSE %s END`) semantics. Because
+  of this asymmetry, `SettingsSyncManager` is the ONLY caller of
+  `SyncApi.postSync`, and it always `GET`s first and echoes back
+  `favorites`/`playlists` verbatim (typed as opaque `JsonElement`, never
+  parsed/reconstructed -- zero risk of an incomplete struct mapping
+  dropping data on the round trip) before ever pushing.
+
+  Synced fields: `theme_color` (accent color -- a genuine
+  shared/meaningful field, lets the two platforms start out visually
+  aligned) and this app's own Android-specific settings (the whole
+  Appearance block via `AppearancePreferences.toJson()`/`fromJson()`,
+  default grid column counts, App Lock enabled), namespaced under a
+  top-level `"android"` key inside `extra_settings_json` -- the same
+  opaque, server-never-parsed catch-all string field iOS already uses
+  for its own extras, so both platforms coexist in the same JSON object
+  without bridge changes, as long as each only ever replaces its own
+  top-level key on push. `audio_settings_json` is deliberately left
+  untouched: this app's canonical `AudioSettings` schema (already
+  ported field-for-field to match iOS, per that class's own doc
+  comment) isn't actually wired into the live audio engine yet --
+  crossfade/equalizer/etc. still live in their own scattered
+  `EqualizerManager`/`MusicService` prefs -- so half-mapping a few of
+  those into the shared struct would produce a mostly-meaningless blob;
+  a real integration needs that engine-wiring done first.
+
+  Merge safety on pull mirrors iOS's own fix for a real production bug
+  (an earlier "overwrite to match remote exactly" implementation
+  silently deleted local data): every synced value is only ever written
+  locally once, on this device's first-ever bootstrap from the account
+  (`PrefsKeys.SYNC_ANDROID_SETTINGS_BOOTSTRAPPED`), never overwriting a
+  value the user may already have customized on this device -- coarser
+  than iOS's own per-key presence check, a deliberate simplification.
+  Pull triggers on login/register/Discord sign-in success and once at
+  every app start (cheap no-op past the first bootstrap); push is
+  debounced (2s) and triggered from Appearance saves, App Lock toggling,
+  and the three library grid-column pickers.
+
+  One real bug caught before shipping: grid column defaults
+  (`DEFAULT_SONGS_VIEW_COLUMNS` etc.) turned out to live in a separate
+  `"settings"`-named `SharedPreferences` file
+  (`Fragment.settingsPrefs()`), not `PreferenceManager.
+  getDefaultSharedPreferences()` like `PrefsKeys.kt`'s other entries --
+  confirmed by tracing `LibrarySettingsFragment`/`MusicLibraryFragment`/
+  `FoldersFragment`/`FolderDetailFragment`'s actual read/write calls
+  before wiring sync to the wrong file.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

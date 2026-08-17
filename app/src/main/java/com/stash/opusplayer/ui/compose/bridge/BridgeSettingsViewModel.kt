@@ -144,7 +144,8 @@ class BridgeSettingsViewModel @Inject constructor(
     private val bridgeConfig: BridgeConfig,
     private val tokenStore: BridgeTokenStore,
     private val authApi: AuthApi,
-    private val discordLoginEvents: DiscordLoginEvents
+    private val discordLoginEvents: DiscordLoginEvents,
+    private val settingsSyncManager: com.stash.opusplayer.bridge.SettingsSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -458,6 +459,7 @@ class BridgeSettingsViewModel @Inject constructor(
     private fun completeDiscordSignIn(token: String) {
         viewModelScope.launch {
             tokenStore.saveSession(token, username = null)
+            settingsSyncManager.pullOnce()
             _uiState.update {
                 it.copy(
                     isStartingDiscordSignIn = false,
@@ -504,6 +506,7 @@ class BridgeSettingsViewModel @Inject constructor(
             body?.token != null -> {
                 val resolvedUsername = body.user?.username ?: fallbackUsername
                 tokenStore.saveSession(body.token, resolvedUsername)
+                settingsSyncManager.pullOnce()
                 _uiState.update {
                     it.copy(
                         isAuthLoading = false,

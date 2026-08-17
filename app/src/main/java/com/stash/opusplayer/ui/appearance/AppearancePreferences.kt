@@ -236,6 +236,7 @@ data class AppearancePreferences(
      * Save to SharedPreferences
      */
     fun saveToPrefs(context: Context) {
+        com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(context)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         
         prefs.edit().apply {
