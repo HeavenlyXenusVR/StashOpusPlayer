@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -135,6 +136,18 @@ fun PublicProfileScreen(
                         BadgeRow(profile.badges)
                     }
 
+                    if (profile.pinnedTracks.isNotEmpty() || viewModel.isSelfProfile()) {
+                        Divider()
+                        PinnedTracksSection(
+                            pinnedTracks = profile.pinnedTracks,
+                            isSelf = viewModel.isSelfProfile(),
+                            isSaving = state.isSavingPinnedTracks,
+                            error = state.pinnedTracksError,
+                            onAddClick = viewModel::openPinnedTrackPicker,
+                            onRemoveClick = { index -> viewModel.removePinnedTrack(index) }
+                        )
+                    }
+
                     state.bannerError?.let {
                         Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
@@ -239,6 +252,60 @@ fun PublicProfileScreen(
             }
         )
     }
+
+    if (state.isPickingPinnedTrack) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::closePinnedTrackPicker,
+            title = { Text("Pin a Track") },
+            text = {
+                val query = state.pinnedTrackPickerQuery.trim().lowercase()
+                val filtered = if (query.isEmpty()) {
+                    state.librarySongs
+                } else {
+                    state.librarySongs.filter {
+                        it.displayName.lowercase().contains(query) || it.artist.lowercase().contains(query)
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxHeight(0.7f)) {
+                    OutlinedTextField(
+                        value = state.pinnedTrackPickerQuery,
+                        onValueChange = viewModel::onPinnedTrackPickerQueryChanged,
+                        label = { Text("Search your library") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    when {
+                        state.isLoadingLibrarySongs -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        filtered.isEmpty() -> Text(
+                            text = "No matching songs.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState())
+                        ) {
+                            filtered.take(200).forEach { song ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.pinTrack(song) }
+                                        .padding(vertical = 6.dp)
+                                ) {
+                                    Text(text = song.displayName, style = MaterialTheme.typography.bodyMedium)
+                                    if (song.artist.isNotBlank()) {
+                                        Text(text = song.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::closePinnedTrackPicker) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -323,6 +390,54 @@ private fun BadgeRow(badges: List<com.stash.opusplayer.bridge.api.ProfileBadge>)
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun PinnedTracksSection(
+    pinnedTracks: List<com.stash.opusplayer.bridge.api.PinnedTrack>,
+    isSelf: Boolean,
+    isSaving: Boolean,
+    error: String?,
+    onAddClick: () -> Unit,
+    onRemoveClick: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text = "Pinned Tracks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        pinnedTracks.forEachIndexed { index, track ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "📌", style = MaterialTheme.typography.bodySmall)
+                    Column {
+                        Text(text = track.title, style = MaterialTheme.typography.bodyMedium)
+                        track.artist?.takeIf { it.isNotBlank() }?.let {
+                            Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (isSelf) {
+                    TextButton(onClick = { onRemoveClick(index) }, enabled = !isSaving) {
+                        Text("Remove", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+        if (isSelf && pinnedTracks.size < 5) {
+            TextButton(onClick = onAddClick, enabled = !isSaving) {
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("+ Pin a Track")
+                }
+            }
+        }
+        error?.let {
+            Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
     }
 }

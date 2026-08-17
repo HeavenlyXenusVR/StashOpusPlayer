@@ -14,13 +14,12 @@ import retrofit2.http.Query
 
 /**
  * A trimmed subset of GET /api/social/profile/{userId}'s response (main.py
- * ~L15767-15795) -- the full payload also includes pinned tracks, top
- * genres/artists, visitor stats, accent colors/glow, avatar decoration/
- * frame, profile effect, and featured playlist. None of that rich
- * profile-customization surface is modeled here; this pass covers
- * identity + banner + guestbook + badges + listening streak. Only the
- * fields this client actually reads are declared -- Gson silently ignores
- * the rest.
+ * ~L15767-15795) -- the full payload also includes top genres/artists,
+ * visitor stats, accent colors/glow, avatar decoration/frame, profile
+ * effect, and featured playlist. None of that rich profile-customization
+ * surface is modeled here; this pass covers identity + banner + guestbook
+ * + badges + listening streak + pinned tracks. Only the fields this client
+ * actually reads are declared -- Gson silently ignores the rest.
  */
 data class PublicSocialProfile(
     @SerializedName("user_id") val userId: String,
@@ -34,7 +33,35 @@ data class PublicSocialProfile(
     @SerializedName("is_friend") val isFriend: Boolean = false,
     @SerializedName("member_since") val memberSince: String? = null,
     val badges: List<ProfileBadge> = emptyList(),
-    @SerializedName("listening_streak") val listeningStreak: ListeningStreak? = null
+    @SerializedName("listening_streak") val listeningStreak: ListeningStreak? = null,
+    @SerializedName("pinned_tracks") val pinnedTracks: List<PinnedTrack> = emptyList()
+)
+
+/**
+ * One entry of [PublicSocialProfile.pinnedTracks] (main.py ~L15779-15782,
+ * the `SELECT source_track_id, track_url, title, artist, album` shape from
+ * `ios_social_pinned_tracks`). Up to 5 per profile, server-enforced.
+ * [sourceTrackId]/[trackUrl] are always null when pinned from this client
+ * -- a pinned track picked from Android's plain on-device library has
+ * neither a bridge source id nor a streamable URL, same honest scope
+ * choice already made for [com.stash.opusplayer.bridge.api.FolderBackupTrack]
+ * (metadata-only, nothing here is ever playable from someone else's
+ * device -- matches Lumisound's own `PinnedTrackPickerSheet`, which picks
+ * from `library.allSongs` rather than a server-side track search, since
+ * "a pinned track is just a display card on the profile, not something
+ * that needs to be streamable from someone else's device").
+ */
+data class PinnedTrack(
+    @SerializedName("source_track_id") val sourceTrackId: String? = null,
+    @SerializedName("track_url") val trackUrl: String? = null,
+    val title: String,
+    val artist: String? = null,
+    val album: String? = null
+)
+
+/** Body for PUT /api/social/profile/pinned-tracks (`PinnedTracksUpdate`, main.py ~L15389). Wholesale replace -- always send the FULL desired list (not a single add/remove), max 5 entries (400s over that). Position is implicit from list order. */
+data class SetPinnedTracksRequest(
+    val tracks: List<PinnedTrack>
 )
 
 /**
@@ -124,6 +151,11 @@ interface SocialProfileApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @PUT("api/social/profile")
     suspend fun updateMyProfile(@Body body: SocialProfileUpdateRequest): Response<BridgeOkResponse>
+
+    /** Wholesale replace -- always send the full desired list, max 5. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @PUT("api/social/profile/pinned-tracks")
+    suspend fun setPinnedTracks(@Body body: SetPinnedTracksRequest): Response<BridgeOkResponse>
 
     /** [body]'s `Content-Type` must be `image/jpeg` or `image/gif` -- server sniffs magic bytes regardless of the header, 15MB cap either way. */
     @Headers("X-Bridge-Auth-Mode: user")

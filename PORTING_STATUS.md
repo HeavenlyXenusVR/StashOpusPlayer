@@ -344,6 +344,22 @@ confirmed by directory/endpoint survey — not touched by this branch:
   `ResponseBody` still goes through the normal OkHttp client and its
   auth interceptor automatically.
 
+  **Pinned tracks were added in a follow-up pass** too (`PUT
+  /api/social/profile/pinned-tracks`) -- up to 5 tracks pinned to your
+  profile, shown as a "Pinned Tracks" section on any profile that has
+  any (or on your own, always, with add/remove controls). Picked from
+  the on-device library (`MusicRepository.getAllSongsFromAllSourcesFast`),
+  not a bridge search -- mirrors Lumisound's own `PinnedTrackPickerSheet`
+  exactly ("a pinned track is just a display card on the profile, not
+  something that needs to be streamable from someone else's device"),
+  so every pinned track is metadata-only (title/artist/album), never
+  playable from someone else's device, same honest scope choice
+  already made for folder-backup tracks. This closes the last small
+  gap in the profile-customization surface that was easy to add;
+  top genres/artists, visitor stats, and accent/frame/decoration/
+  effect customization remain real future scope for the reasons noted
+  above.
+
   Still unbuilt: cross-device sync, push notifications, weekly mix
   (blocked on an entirely separate "personal cloud music library" API
   family -- `/user/music/search|upload|stream|artwork|metadata|
@@ -399,11 +415,11 @@ confirmed by directory/endpoint survey — not touched by this branch:
   longest consecutive-day streak (hidden entirely, not shown as zero,
   if the owner disabled `show_listening_stats`). Badge icons are SF
   Symbol names server-side and aren't rendered -- tier (gold/silver/
-  bronze) alone drives this client's chip color. Still not built: pinned
-  tracks, top genres/artists, visitor stats, and accent-color/glow/
-  avatar-frame/avatar-decoration/profile-effect customization -- the
-  endpoint returns all of that too, but only the fields this screen
-  actually reads are modeled (see `PublicSocialProfile`'s doc comment).
+  bronze) alone drives this client's chip color. Still not built: top
+  genres/artists, visitor stats, and accent-color/glow/avatar-frame/
+  avatar-decoration/profile-effect customization -- the endpoint
+  returns all of that too, but only the fields this screen actually
+  reads are modeled (see `PublicSocialProfile`'s doc comment).
 
   **User blocking is now ported** too (`POST`/`DELETE /api/social/block/{id}`,
   `GET /api/social/block` for `Settings -> Blocked Users`). A "Block
@@ -442,8 +458,8 @@ confirmed by directory/endpoint survey — not touched by this branch:
   /api/social/profile/{id}` echoes back, so an edit UI for them would
   either show a possibly-wrong default or need a second `/me`-shaped
   endpoint this pass doesn't add. Real future scope, not silently
-  dropped -- same reasoning as the already-noted pinned-tracks/top-
-  genres/accent-customization gaps.
+  dropped -- same reasoning as the already-noted top-genres/accent-
+  customization gaps.
 
   **Friend nicknames and tags are now ported** too (`PUT
   /api/social/friends/{id}/nickname`, `GET /api/social/friends/tags`,

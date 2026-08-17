@@ -8,12 +8,16 @@ import androidx.lifecycle.viewModelScope
 import com.stash.opusplayer.bridge.BridgeConfig
 import com.stash.opusplayer.bridge.BridgeTokenStore
 import com.stash.opusplayer.bridge.api.MusicCompatibility
+import com.stash.opusplayer.bridge.api.PinnedTrack
 import com.stash.opusplayer.bridge.api.PostProfileCommentRequest
 import com.stash.opusplayer.bridge.api.ProfileComment
 import com.stash.opusplayer.bridge.api.PublicSocialProfile
+import com.stash.opusplayer.bridge.api.SetPinnedTracksRequest
 import com.stash.opusplayer.bridge.api.SocialApi
 import com.stash.opusplayer.bridge.api.SocialProfileApi
 import com.stash.opusplayer.bridge.api.SocialProfileUpdateRequest
+import com.stash.opusplayer.data.MusicRepository
+import com.stash.opusplayer.data.Song
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
@@ -33,9 +37,15 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * `PublicProfileView.swift`. Covers identity + banner + guestbook +
  * badges/streak + blocking + a friends-only Music Match compatibility
  * score + basic self-profile editing (bio/pronouns/status/guestbook
- * toggle) -- accent-color/avatar-frame/decoration/effect customization,
- * pinned tracks, top genres/artists, and visitor stats are still out of
+ * toggle) + pinned tracks -- accent-color/avatar-frame/decoration/effect
+ * customization, top genres/artists, and visitor stats are still out of
  * scope (see [PublicSocialProfile]'s doc comment for why).
+ *
+ * Pinned tracks are picked from the on-device library (via
+ * [MusicRepository.getAllSongsFromAllSourcesFast]), not a bridge search --
+ * mirrors Lumisound's own `PinnedTrackPickerSheet` exactly ("a pinned
+ * track is just a display card on the profile, not something that needs
+ * to be streamable from someone else's device").
  *
  * "Self view" (own profile, with banner edit controls, and never a Block
  * User button) is detected by comparing the loaded profile's username
@@ -81,7 +91,14 @@ class PublicProfileViewModel @Inject constructor(
         val editStatusTextInput: String = "",
         val editShowGuestbookInput: Boolean = true,
         val isSavingProfile: Boolean = false,
-        val profileSaveError: String? = null
+        val profileSaveError: String? = null,
+
+        val isPickingPinnedTrack: Boolean = false,
+        val isLoadingLibrarySongs: Boolean = false,
+        val librarySongs: List<Song> = emptyList(),
+        val pinnedTrackPickerQuery: String = "",
+        val isSavingPinnedTracks: Boolean = false,
+        val pinnedTracksError: String? = null
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -361,6 +378,67 @@ class PublicProfileViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSavingProfile = false, profileSaveError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    // --- Pinned tracks --------------------------------------------------------
+
+    fun openPinnedTrackPicker() {
+        _uiState.update { it.copy(isPickingPinnedTrack = true, pinnedTrackPickerQuery = "", pinnedTracksError = null) }
+        if (_uiState.value.librarySongs.isNotEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingLibrarySongs = true) }
+            val songs = runCatching {
+                MusicRepository(appContext).getAllSongsFromAllSourcesFast()
+            }.getOrDefault(emptyList())
+            _uiState.update { it.copy(isLoadingLibrarySongs = false, librarySongs = songs) }
+        }
+    }
+
+    fun closePinnedTrackPicker() {
+        _uiState.update { it.copy(isPickingPinnedTrack = false) }
+    }
+
+    fun onPinnedTrackPickerQueryChanged(value: String) {
+        _uiState.update { it.copy(pinnedTrackPickerQuery = value) }
+    }
+
+    /** Appends [song] as a new pinned track (up to the server's 5-slot cap) and saves the full list immediately -- wholesale replace, matching [SetPinnedTracksRequest]'s own contract. */
+    fun pinTrack(song: Song) {
+        val current = _uiState.value.profile?.pinnedTracks ?: return
+        if (current.size >= 5) return
+        val newTrack = PinnedTrack(
+            sourceTrackId = null,
+            trackUrl = null,
+            title = song.displayName,
+            artist = song.artist.takeIf { it.isNotBlank() },
+            album = song.album.takeIf { it.isNotBlank() }
+        )
+        savePinnedTracks(current + newTrack)
+        closePinnedTrackPicker()
+    }
+
+    fun removePinnedTrack(index: Int) {
+        val current = _uiState.value.profile?.pinnedTracks ?: return
+        if (index !in current.indices) return
+        savePinnedTracks(current.filterIndexed { i, _ -> i != index })
+    }
+
+    private fun savePinnedTracks(tracks: List<PinnedTrack>) {
+        val userId = loadedUserId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingPinnedTracks = true, pinnedTracksError = null) }
+            try {
+                val response = socialProfileApi.setPinnedTracks(SetPinnedTracksRequest(tracks))
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isSavingPinnedTracks = false) }
+                    load(userId)
+                } else {
+                    _uiState.update { it.copy(isSavingPinnedTracks = false, pinnedTracksError = "Couldn't save pinned tracks (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSavingPinnedTracks = false, pinnedTracksError = "Something went wrong. Check your connection.") }
             }
         }
     }
