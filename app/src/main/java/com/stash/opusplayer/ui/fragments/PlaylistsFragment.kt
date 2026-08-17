@@ -4,22 +4,29 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.stash.opusplayer.databinding.FragmentPlaylistsBinding
 import com.stash.opusplayer.data.MusicRepository
+import com.stash.opusplayer.mood.M3UImportService
 import com.stash.opusplayer.ui.appearance.ThemeManager
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class PlaylistsFragment : Fragment() {
-    
+
     private var _binding: FragmentPlaylistsBinding? = null
     private val binding get() = _binding!!
 
     private lateinit var repository: MusicRepository
     private lateinit var adapter: PlaylistsAdapter
+
+    private val m3uPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { importM3u(it) } }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -36,6 +43,7 @@ class PlaylistsFragment : Fragment() {
         setupRecycler()
         applyAdaptiveChrome()
         binding.createButton.setOnClickListener { promptCreate() }
+        binding.importM3uButton.setOnClickListener { m3uPickerLauncher.launch("*/*") }
         observePlaylists()
     }
 
@@ -124,6 +132,35 @@ class PlaylistsFragment : Fragment() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun importM3u(uri: android.net.Uri) {
+        val name = queryDisplayName(uri) ?: "Imported Playlist"
+        val playlistName = name.substringBeforeLast('.').ifBlank { "Imported Playlist" }
+        Toast.makeText(requireContext(), "Importing \"$playlistName\"...", Toast.LENGTH_SHORT).show()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val library = repository.getAllSongs()
+            val result = M3UImportService.import(requireContext(), uri, library)
+            if (result.totalEntries == 0) {
+                Toast.makeText(requireContext(), "That file has no playable entries.", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            repository.createPlaylist(playlistName, result.matchedSongs)
+            Toast.makeText(
+                requireContext(),
+                "Imported \"$playlistName\" -- ${result.matchedSongs.size} of ${result.totalEntries} tracks matched.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun queryDisplayName(uri: android.net.Uri): String? {
+        return runCatching {
+            requireContext().contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+            }
+        }.getOrNull()
     }
 
     override fun onDestroyView() {

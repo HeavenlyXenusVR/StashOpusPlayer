@@ -35,6 +35,20 @@
             android:textStyle="bold" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/importM3uButton"
+            style="@style/NeomorphicAccentButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="8dp"
+            android:text="Import"
+            android:textSize="11sp"
+            android:textColor="@color/white"
+            app:icon="@drawable/ic_folder"
+            app:iconTint="@color/white"
+            app:iconSize="14dp"
+            app:iconPadding="4dp" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/createButton"
             style="@style/NeomorphicAccentButton"
             android:layout_width="wrap_content"

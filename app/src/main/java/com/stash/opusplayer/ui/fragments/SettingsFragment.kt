@@ -18,6 +18,7 @@ import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
+import com.stash.opusplayer.ui.fragments.settings.MoodPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.SmartPlaylistsFragment
@@ -132,6 +133,14 @@ class SettingsFragment : Fragment() {
             summary = "Find and delete corrupt audio files, and restore anything recently moved to trash."
         ) {
             openSettingsScreen(LibraryMaintenanceFragment(), "Library Maintenance")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Mood Playlists",
+            summary = "Energetic, Chill, Focus, and Sleep -- auto-grouped from your library."
+        ) {
+            openSettingsScreen(MoodPlaylistsFragment(), "Mood Playlists")
         }
 
         addSettingsTile(

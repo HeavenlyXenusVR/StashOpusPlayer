@@ -81,6 +81,30 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
         playlistDao.deleteTrackByPlaylistAndSong(playlistId, songId)
     }
 
+    /** Batch add, for mood-playlist generation and M3U import -- one DB round-trip instead of N calls to [addSongToPlaylist]. */
+    suspend fun addSongsToPlaylist(playlistId: Long, songs: List<Song>) = withContext(Dispatchers.IO) {
+        if (songs.isEmpty()) return@withContext
+        val tracks = songs.map { song ->
+            PlaylistTrackEntity(
+                playlistId = playlistId,
+                songId = song.id,
+                title = song.displayName,
+                artist = song.artistName,
+                album = song.albumName,
+                duration = song.duration,
+                path = song.path
+            )
+        }
+        playlistDao.insertTracks(tracks)
+    }
+
+    /** Creates a playlist and populates it with [songs] in one call, mirroring Lumisound's `createPlaylist(name:songIDs:)`. */
+    suspend fun createPlaylist(name: String, songs: List<Song>): Long = withContext(Dispatchers.IO) {
+        val playlistId = createPlaylist(name)
+        addSongsToPlaylist(playlistId, songs)
+        playlistId
+    }
+
     // Persisted-index-backed replacement for the old live-MediaStore-every-call behavior.
     // Reads the Room-backed "songs" index (populated/refreshed by LibraryScanWorker and
     // refreshSongIndex()) instead of hitting MediaStore synchronously on every call.
