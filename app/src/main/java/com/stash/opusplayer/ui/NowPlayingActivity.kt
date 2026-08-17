@@ -253,6 +253,7 @@ class NowPlayingActivity : AppCompatActivity() {
                     R.id.action_choose_layout_theme -> { showLayoutThemePicker(); true }
                     R.id.action_share -> { shareCurrentTrack(); true }
                     R.id.action_embed_artwork -> { embedArtworkIntoFile(); true }
+                    R.id.action_make_clip -> { showMakeClipDialog(); true }
                     R.id.action_toggle_crossfade -> {
                         // Quick toggle
                         val prefs = getSharedPreferences("settings", 0)
@@ -804,6 +805,103 @@ else -> com.stash.opusplayer.utils.TagEditor.embedArtworkAny(this@NowPlayingActi
                     showVisualFeedback("Failed to embed artwork")
                 }
             }
+        }
+    }
+
+    /**
+     * Ported from Lumisound's ClipMakerView/ClipExportService -- a plain
+     * two-thumb range picker (matching the Swift original's own "plain
+     * sliders, not a waveform scrubber" choice), built programmatically
+     * rather than a new XML layout since this codebase already establishes
+     * that convention for [com.google.android.material.slider.Slider] in
+     * SettingsUi.kt and there's no RangeSlider XML precedent to follow.
+     */
+    private fun showMakeClipDialog() {
+        val song = currentSong ?: return
+        val durationMs = song.duration
+        if (durationMs <= 1000L) {
+            showVisualFeedback("Track is too short to clip")
+            return
+        }
+
+        val maxClipMs = 60_000L
+        val defaultEndMs = minOf(durationMs, 30_000L)
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        val rangeLabel = android.widget.TextView(this)
+        container.addView(rangeLabel)
+
+        val rangeSlider = com.google.android.material.slider.RangeSlider(this).apply {
+            valueFrom = 0f
+            valueTo = durationMs.toFloat()
+            stepSize = 1000f
+            values = listOf(0f, defaultEndMs.toFloat())
+        }
+        container.addView(rangeSlider)
+
+        fun formatClipMs(ms: Long): String {
+            val totalSeconds = ms / 1000
+            return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
+        }
+        fun updateLabel() {
+            val values = rangeSlider.values
+            val start = values[0].toLong()
+            val end = values[1].toLong()
+            rangeLabel.text = "Clip: ${formatClipMs(start)} - ${formatClipMs(end)} (${end - start} ms)"
+        }
+        updateLabel()
+
+        rangeSlider.addOnChangeListener { slider, _, fromUser ->
+            if (!fromUser) return@addOnChangeListener
+            val values = slider.values.toMutableList()
+            // Live-clamp the span to maxClipMs, matching Lumisound's
+            // mutually-clamped Start/End sliders rather than only
+            // validating at export time.
+            if (values[1] - values[0] > maxClipMs) {
+                values[1] = (values[0] + maxClipMs).coerceAtMost(durationMs.toFloat())
+                slider.values = values
+            }
+            updateLabel()
+        }
+
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Make Clip")
+            .setView(container)
+            .setPositiveButton("Export & Share") { _, _ ->
+                val values = rangeSlider.values
+                exportAndShareClip(song, values[0].toLong(), values[1].toLong())
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun exportAndShareClip(song: com.stash.opusplayer.data.Song, startMs: Long, endMs: Long) {
+        showVisualFeedback("Exporting clip...")
+        lifecycleScope.launch {
+            val file = try {
+                com.stash.opusplayer.clip.ClipExportService.exportClip(
+                    this@NowPlayingActivity, song.path, startMs, endMs, song.title
+                )
+            } catch (e: Exception) {
+                null
+            }
+            if (file == null) {
+                showVisualFeedback("Couldn't export clip -- it may be protected or unreadable")
+                return@launch
+            }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this@NowPlayingActivity, "$packageName.fileprovider", file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "audio/mp4"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Share clip"))
         }
     }
 

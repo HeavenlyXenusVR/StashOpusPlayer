@@ -13,6 +13,10 @@
         android:title="Embed Artwork into File"
         android:visible="true" />
     <item
+        android:id="@+id/action_make_clip"
+        android:title="Make Clip"
+        android:visible="true" />
+    <item
         android:id="@+id/action_toggle_crossfade"
         android:title="Toggle Crossfade"
         android:visible="true" />

@@ -123,8 +123,24 @@ confirmed by directory/endpoint survey — not touched by this branch:
   before genre keywords). Sort-by-BPM, BPM-proximity shuffle, and
   beat-matched crossfade (all real consumers in the Swift original) are
   NOT ported yet -- the analyzer/cache exists, nothing downstream uses it
-  besides mood classification. Still unported: AcoustID fingerprint
-  identification, harmonic mixing, spatial audio, clip maker, GIF search.
+  besides mood classification.
+
+  **Clip Maker is also now ported** (`com.stash.opusplayer.clip.ClipExportService`,
+  reachable from Now Playing's overflow menu -> "Make Clip"). Unlike
+  Lumisound's `AVAssetExportSession`-based trim, Android's `MediaMuxer`
+  can't write MP3 and has no format-agnostic stream-copy trim API, so
+  this always decodes and re-encodes to AAC/M4A via a hand-built
+  `MediaExtractor` -> `MediaCodec` decode -> `MediaCodec` encode ->
+  `MediaMuxer` pipeline (no prior art for encode/mux in this codebase --
+  BpmAnalyzer only ever decoded for read-only analysis). UI is a plain
+  two-thumb `RangeSlider` dialog (60s max clip, matching Lumisound's own
+  "plain sliders, not a waveform scrubber" choice), export shares via the
+  existing FileProvider pattern. `ClipMakerService`'s and
+  `ClipExportService`'s near-duplicate Swift implementations were merged
+  into one Kotlin service.
+
+  Still unported: AcoustID fingerprint identification, harmonic mixing,
+  spatial audio, GIF search.
 - **Library maintenance**: corrupt-file finder, recently-deleted recovery,
   periodic metadata refresh. Stash has its own separate duplicate-finder
   path (`DuplicateFinderService.kt`, pre-existing) but nothing matching
