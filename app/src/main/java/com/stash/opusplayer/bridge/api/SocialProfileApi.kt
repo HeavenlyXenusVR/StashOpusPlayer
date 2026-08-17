@@ -13,12 +13,13 @@ import retrofit2.http.Query
 
 /**
  * A trimmed subset of GET /api/social/profile/{userId}'s response (main.py
- * ~L15767-15795) -- the full payload also includes badges, pinned tracks,
- * top genres/artists, listening streak, visitor stats, accent colors/glow,
- * avatar decoration/frame, profile effect, and featured playlist. None of
- * that rich profile-customization surface is modeled here; this pass only
- * covers identity + banner + guestbook. Only the fields this client
- * actually reads are declared -- Gson silently ignores the rest.
+ * ~L15767-15795) -- the full payload also includes pinned tracks, top
+ * genres/artists, visitor stats, accent colors/glow, avatar decoration/
+ * frame, profile effect, and featured playlist. None of that rich
+ * profile-customization surface is modeled here; this pass covers
+ * identity + banner + guestbook + badges + listening streak. Only the
+ * fields this client actually reads are declared -- Gson silently ignores
+ * the rest.
  */
 data class PublicSocialProfile(
     @SerializedName("user_id") val userId: String,
@@ -27,7 +28,30 @@ data class PublicSocialProfile(
     val bio: String? = null,
     @SerializedName("show_guestbook") val showGuestbook: Boolean = true,
     @SerializedName("is_friend") val isFriend: Boolean = false,
-    @SerializedName("member_since") val memberSince: String? = null
+    @SerializedName("member_since") val memberSince: String? = null,
+    val badges: List<ProfileBadge> = emptyList(),
+    @SerializedName("listening_streak") val listeningStreak: ListeningStreak? = null
+)
+
+/**
+ * One entry of [PublicSocialProfile.badges] (`_compute_profile_badges`,
+ * main.py ~L16950) -- milestone achievement chips, always present (no
+ * privacy toggle, public flair). Only the highest tier reached per
+ * category is returned. [icon] is an SF Symbol name (e.g.
+ * "headphones") -- not rendered here, Android has no equivalent icon
+ * set to map it onto; [tier] alone drives this client's chip color.
+ */
+data class ProfileBadge(
+    val id: String,
+    val label: String,
+    val icon: String? = null,
+    val tier: String
+)
+
+/** [PublicSocialProfile.listeningStreak] (`_compute_listening_streak`, main.py ~L16912) -- null if the profile owner disabled `show_listening_stats`, not merely zero. */
+data class ListeningStreak(
+    @SerializedName("current_streak_days") val currentStreakDays: Int = 0,
+    @SerializedName("longest_streak_days") val longestStreakDays: Int = 0
 )
 
 /** One row of GET /api/social/profile/{userId}/comments, and POST's single-object response (main.py ~L16395-16479). */

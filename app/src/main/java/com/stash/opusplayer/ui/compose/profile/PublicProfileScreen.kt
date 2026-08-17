@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +24,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -95,6 +97,20 @@ fun PublicProfileScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    profile.listeningStreak?.let { streak ->
+                        if (streak.currentStreakDays > 0 || streak.longestStreakDays > 0) {
+                            Text(
+                                text = "🔥 ${streak.currentStreakDays} day streak (longest: ${streak.longestStreakDays})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (profile.badges.isNotEmpty()) {
+                        BadgeRow(profile.badges)
                     }
 
                     state.bannerError?.let {
@@ -176,6 +192,30 @@ private fun BannerHeader(
                         Text(if (bannerBitmap == null) "Add Banner" else "Change Banner")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BadgeRow(badges: List<com.stash.opusplayer.bridge.api.ProfileBadge>) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        badges.forEach { badge ->
+            val tierColor = when (badge.tier) {
+                "gold" -> androidx.compose.ui.graphics.Color(0xFFFFD700)
+                "silver" -> androidx.compose.ui.graphics.Color(0xFFC0C0C0)
+                "bronze" -> androidx.compose.ui.graphics.Color(0xFFCD7F32)
+                else -> MaterialTheme.colorScheme.secondaryContainer
+            }
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = tierColor.copy(alpha = 0.25f)) {
+                Text(
+                    text = badge.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
             }
         }
     }

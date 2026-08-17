@@ -235,13 +235,7 @@ confirmed by directory/endpoint survey — not touched by this branch:
   `DELETE /api/social/profile/comments/{id}`) with the same permission
   rules the server enforces -- posting requires being friends and never
   on your own profile, deleting requires being the comment's author or
-  the profile owner. **Not built in this pass**: badges, pinned tracks,
-  top genres/artists, listening streak, visitor stats, accent-color/
-  glow/avatar-frame/avatar-decoration/profile-effect customization,
-  activity feed, and leaderboard -- the public profile endpoint returns
-  all of that too, but only the fields this screen actually reads are
-  modeled (see `PublicSocialProfile`'s doc comment); the rest is real
-  future scope, not silently dropped.
+  the profile owner.
 
   **Activity feed and leaderboard are now ported** too (`Settings ->
   Friend Activity`, `GET /api/social/activity/friends`,
@@ -256,6 +250,21 @@ confirmed by directory/endpoint survey — not touched by this branch:
   and return nothing (not an error) if the caller has no friends yet.
   Tapping a leaderboard entry opens that friend's `PublicProfileFragment`
   from the previous chunk; activity feed rows are inert, matching iOS.
+
+  **Badges and listening streak were added to the profile screen in a
+  follow-up pass** -- purely additive, no new endpoint: both were
+  already present in the same `GET /api/social/profile/{id}` response
+  the profile screen already calls, just not modeled client-side yet.
+  Milestone chips (member-since tenure, play count, friend count, etc.
+  -- server always computes them, no privacy toggle) plus a current/
+  longest consecutive-day streak (hidden entirely, not shown as zero,
+  if the owner disabled `show_listening_stats`). Badge icons are SF
+  Symbol names server-side and aren't rendered -- tier (gold/silver/
+  bronze) alone drives this client's chip color. Still not built: pinned
+  tracks, top genres/artists, visitor stats, and accent-color/glow/
+  avatar-frame/avatar-decoration/profile-effect customization -- the
+  endpoint returns all of that too, but only the fields this screen
+  actually reads are modeled (see `PublicSocialProfile`'s doc comment).
   `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
