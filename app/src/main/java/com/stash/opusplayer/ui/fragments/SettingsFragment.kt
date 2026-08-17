@@ -18,6 +18,7 @@ import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
 import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.CloudPlaylistsFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscoveryFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
@@ -194,6 +195,14 @@ class SettingsFragment : Fragment() {
             summary = "Badges, streaks, and listening stats -- shared with Lumisound."
         ) {
             openSettingsScreen(AchievementsFragment(), "Achievements")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discover",
+            summary = "Discover Mix (new tracks based on your top artists) and On This Day (what you played on this date in past years)."
+        ) {
+            openSettingsScreen(DiscoveryFragment(), "Discover")
         }
 
         addSettingsTile(

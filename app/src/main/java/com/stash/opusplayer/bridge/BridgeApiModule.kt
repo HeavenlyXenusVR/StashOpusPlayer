@@ -4,6 +4,7 @@ import com.google.gson.GsonBuilder
 import com.stash.opusplayer.bridge.api.AuthApi
 import com.stash.opusplayer.bridge.api.FingerprintApi
 import com.stash.opusplayer.bridge.api.SocialApi
+import com.stash.opusplayer.bridge.api.DiscoveryApi
 import com.stash.opusplayer.bridge.api.StreamingApi
 import com.stash.opusplayer.bridge.api.SyncApi
 import dagger.Module
@@ -102,4 +103,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideFingerprintApi(retrofit: Retrofit): FingerprintApi = retrofit.create(FingerprintApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDiscoveryApi(retrofit: Retrofit): DiscoveryApi = retrofit.create(DiscoveryApi::class.java)
 }

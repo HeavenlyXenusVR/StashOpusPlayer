@@ -134,16 +134,39 @@ confirmed by directory/endpoint survey — not touched by this branch:
   account, and avatar upload** are all wired (`Settings -> Account & Server`,
   `BridgeAccountFragment` hosting `BridgeSettingsScreen`) against the exact
   same `ios-bridge` endpoints Lumisound's `AccountService` uses, with the
-  same account working on both apps. Avatar upload/display goes through
+  same account working on both apps.
+
+  **Discover Mix, On This Day, and Artist Bio are now ported** too
+  (`Settings -> Discover`, `com.stash.opusplayer.ui.compose.discovery.*`,
+  plus a new bio card on the existing artist songs screen). Discover Mix
+  and On This Day are metadata-only lists (`GET /user/discover-mix`,
+  `GET /user/on-this-day`) -- neither endpoint returns a directly-playable
+  URL, so tapping a row resolves one on demand via the same
+  `BridgeStreamResolver` search results already use, then plays it
+  through the shared `MusicPlayerManager` as a single-track queue. This
+  is the "resolved bridge track -> actual playback" wiring
+  `StreamingBrowseViewModel`'s own KDoc had explicitly flagged as
+  deferred -- built here since these two features are pointless without
+  it. No "Play All" for Discover Mix (unlike Lumisound): that needs
+  resolving every row's stream URL up front before queueing, a lazy-
+  queue-resolution capability this app's player doesn't have; per-row
+  tap-to-play covers the real use case without it. Artist Bio
+  (`GET /api/artist/bio`, JWT-gated despite its `/api/` prefix -- confirmed
+  against main.py directly) is a small card embedded in
+  `ArtistSongsFragment` above the track list, matching where Lumisound
+  surfaces it in `ArtistDetailView`; silently absent if the artist isn't
+  found, the user isn't signed in, or the request fails -- no error state,
+  matching iOS's own treatment.
+
+  Avatar upload/display goes through
   `{baseUrl}/user/avatar/{userId}` directly (a raw-bytes GET/POST, not a
   `avatar_url` JSON field -- that column is dead/unused server-side, same
   as on iOS) with a client-side JPEG-recompress step for non-GIF images,
   matching Lumisound's own client-side handling; animated GIF avatars show
   only their first frame (no Coil/GIF-playback dependency in this project
-  to render the rest). Still unbuilt: backups, folder backup, cross-device
-  sync, subscriptions/feed, scrobbling (Last.fm/Libre.fm), Discord
-  RPC/webhook, push notifications, achievements, discover mix, weekly mix,
-  on-this-day, artist bio. `StreamingBrowseScreen` is also now reachable
+  to render the rest). Still unbuilt: folder backup, cross-device sync,
+  subscriptions/feed, Discord RPC/webhook, push notifications, weekly
+  mix. `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
 

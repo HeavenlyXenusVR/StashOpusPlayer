@@ -48,6 +48,12 @@
 
     </LinearLayout>
 
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/artistBioComposeView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
