@@ -36,6 +36,7 @@ import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import com.stash.opusplayer.R
 import com.stash.opusplayer.databinding.ActivityMainBinding
+import com.stash.opusplayer.security.AppLockManager
 import com.stash.opusplayer.ui.fragments.MusicLibraryFragment
 import com.stash.opusplayer.ui.fragments.EqualizerFragment
 import com.stash.opusplayer.ui.fragments.SettingsFragment
@@ -69,7 +70,11 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private lateinit var miniPlayerView: MiniPlayerSurface
     private lateinit var miniPlayerToggleManager: MiniPlayerToggleManager
     private var currentMiniPlayerStyle: String? = null
-    
+
+    // App Lock
+    private var wentToBackground = false
+    private var appLockOverlay: View? = null
+
     // Appearance customization
     private var appearanceReceiver: BroadcastReceiver? = null
     private lateinit var visualCustomizationManager: VisualCustomizationManager
@@ -205,7 +210,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         // Handle back button press
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                if (appLockOverlay != null) {
+                    moveTaskToBack(true)
+                } else if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
                     finish()
@@ -222,6 +229,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     override fun onStop() {
         super.onStop()
         unregisterAppearanceReceiver()
+        if (AppLockManager.isEnabled(this)) {
+            wentToBackground = true
+        }
     }
     
     override fun onTrimMemory(level: Int) {
@@ -1051,6 +1061,33 @@ val repository = com.stash.opusplayer.data.MusicRepository(this@MainActivity)
         if (::miniPlayerView.isInitialized) {
             try { miniPlayerView.resync() } catch (_: Exception) {}
         }
+        if (wentToBackground && AppLockManager.isEnabled(this)) {
+            showAppLockOverlay()
+        }
+    }
+
+    private fun showAppLockOverlay() {
+        wentToBackground = false
+        if (appLockOverlay != null) return
+
+        val overlay = layoutInflater.inflate(R.layout.view_app_lock_overlay, binding.drawerLayout, false)
+        binding.drawerLayout.addView(overlay)
+        appLockOverlay = overlay
+
+        val promptForUnlock: () -> Unit = {
+            AppLockManager.showPrompt(
+                activity = this,
+                onSuccess = { hideAppLockOverlay() },
+                onFailure = { /* prompt dismissed/cancelled -- overlay stays up, Unlock button re-triggers it */ }
+            )
+        }
+        overlay.findViewById<View>(R.id.app_lock_unlock_button).setOnClickListener { promptForUnlock() }
+        promptForUnlock()
+    }
+
+    private fun hideAppLockOverlay() {
+        appLockOverlay?.let { binding.drawerLayout.removeView(it) }
+        appLockOverlay = null
     }
 
     override fun onDestroy() {

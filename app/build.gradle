@@ -213,6 +213,10 @@ dependencies {
     // non-alpha version) and is what production apps use in practice.
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
+    // BiometricPrompt — used by security/AppLockManager.kt for the App Lock
+    // Settings toggle (fingerprint/face re-auth on app resume).
+    implementation 'androidx.biometric:biometric:1.1.0'
+
     // Jetpack Compose (new screens only -- Library/Now Playing/Settings fragments
     // stay View/XML for now, migrated incrementally in later work). BOM version
     // must stay compatible with the pinned Compose Compiler 1.5.3 above.

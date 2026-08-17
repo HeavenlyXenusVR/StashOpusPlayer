@@ -517,6 +517,21 @@ confirmed by directory/endpoint survey — not touched by this branch:
   bridge contract to port; only the underlying stats data is modeled
   here.
 
+  **App Lock is now ported** too (`Settings -> Privacy -> App Lock`,
+  `security/AppLockManager.kt`), ported from
+  `SettingsView+AppLockSection.swift`. A single toggle that requires
+  fingerprint/face re-authentication (`androidx.biometric.BiometricPrompt`,
+  `BIOMETRIC_STRONG` only) whenever the app is reopened from the
+  background, backed by a full-screen lock overlay added to
+  `MainActivity`'s root `DrawerLayout` in `onResume` and torn down on
+  successful auth. Unlike iOS (which can gate on Face ID/Touch ID alone
+  with no PIN fallback shown), this deliberately does not offer a device
+  PIN/pattern fallback either -- that would just be the device's own
+  lock screen wrapped a second time. If the toggle is turned on but no
+  biometric is enrolled on the device, it's rejected immediately with an
+  explanatory toast rather than silently no-opping. Purely local/on-device;
+  no bridge dependency.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

@@ -59,6 +59,9 @@ object PrefsKeys {
     // Appearance - Bookkeeping
     const val APPEARANCE_RECENT_COLORS_JSON = "appearance_recent_colors_json"
     const val APPEARANCE_LAST_PRESET_NAME = "appearance_last_preset_name"
+
+    // Privacy - App Lock
+    const val APP_LOCK_ENABLED = "app_lock_enabled" // Boolean
 }
 
 object PrefsUtils {

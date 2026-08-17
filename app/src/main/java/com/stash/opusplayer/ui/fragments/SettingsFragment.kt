@@ -32,6 +32,7 @@ import com.stash.opusplayer.ui.fragments.settings.MoodPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.ScrobblingFragment
 import com.stash.opusplayer.ui.fragments.settings.TempoAnalyzerFragment
 import com.stash.opusplayer.ui.fragments.settings.PodcastsFragment
+import com.stash.opusplayer.security.AppLockManager
 import com.stash.opusplayer.ui.fragments.settings.RewindFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
 import com.stash.opusplayer.ui.fragments.settings.SubscriptionsFragment
@@ -64,6 +65,7 @@ class SettingsFragment : Fragment() {
 
         buildQuickActions(content)
         buildCoreNavigation(content)
+        buildPrivacyControls(content)
         buildUpdateControls(content)
 
         return scrollView
@@ -316,6 +318,35 @@ class SettingsFragment : Fragment() {
             summary = "A calendar view of how much you've listened each day."
         ) {
             openSettingsScreen(ListeningHeatmapFragment(), "Listening Heatmap")
+        }
+    }
+
+    private fun buildPrivacyControls(parent: LinearLayout) {
+        val section = addSettingsSection(
+            parent,
+            "Privacy",
+            "Local device security -- ported from Lumisound's App Lock setting."
+        )
+
+        val appLockSwitch = addSwitchControl(
+            section,
+            title = "App Lock",
+            summary = "Require fingerprint or face unlock whenever the app is reopened from the background.",
+            checked = AppLockManager.isEnabled(requireContext())
+        ) { enabled ->
+            if (enabled && !AppLockManager.isBiometricAvailable(requireContext())) {
+                Toast.makeText(
+                    requireContext(),
+                    "No fingerprint or face unlock is set up on this device. Add one in your device's security settings first.",
+                    Toast.LENGTH_LONG
+                ).show()
+                AppLockManager.setEnabled(requireContext(), false)
+            } else {
+                AppLockManager.setEnabled(requireContext(), enabled)
+            }
+        }
+        if (!AppLockManager.isBiometricAvailable(requireContext())) {
+            appLockSwitch.isChecked = false
         }
     }
 
