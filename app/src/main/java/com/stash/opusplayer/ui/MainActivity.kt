@@ -36,6 +36,8 @@ import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import com.stash.opusplayer.R
 import com.stash.opusplayer.databinding.ActivityMainBinding
+import com.stash.opusplayer.bridge.DiscordLoginEvents
+import com.stash.opusplayer.bridge.DiscordLoginOutcome
 import com.stash.opusplayer.security.AppLockManager
 import com.stash.opusplayer.ui.fragments.MusicLibraryFragment
 import com.stash.opusplayer.ui.fragments.EqualizerFragment
@@ -74,6 +76,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     // App Lock
     private var wentToBackground = false
     private var appLockOverlay: View? = null
+
+    @javax.inject.Inject
+    lateinit var discordLoginEvents: DiscordLoginEvents
 
     // Appearance customization
     private var appearanceReceiver: BroadcastReceiver? = null
@@ -150,6 +155,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         checkPermissionsAndSetup()
         requestNotificationPermissionIfNeeded()
         handleDiscordVerifyDeepLink(intent)
+        handleDiscordLoginDeepLink(intent)
 
         // Observe image download tracker to show top banner
         lifecycleScope.launch {
@@ -575,9 +581,28 @@ Check for updates anytime from Settings.""")
         }
     }
 
+    private fun handleDiscordLoginDeepLink(intent: Intent) {
+        val data = intent.data ?: return
+        if (data.scheme != "lumisound" || data.host != "discord-login") return
+        val success = data.getQueryParameter("success") == "true"
+        if (!success) {
+            val reason = data.getQueryParameter("reason")
+            lifecycleScope.launch { discordLoginEvents.emit(DiscordLoginOutcome.Failed(reason)) }
+            return
+        }
+        if (data.getQueryParameter("requires_2fa") == "true") {
+            val pendingToken = data.getQueryParameter("pending_token") ?: return
+            lifecycleScope.launch { discordLoginEvents.emit(DiscordLoginOutcome.RequiresTwoFactor(pendingToken)) }
+            return
+        }
+        val token = data.getQueryParameter("token") ?: return
+        lifecycleScope.launch { discordLoginEvents.emit(DiscordLoginOutcome.SignedIn(token)) }
+    }
+
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         intent?.let { handleDiscordVerifyDeepLink(it) }
+        intent?.let { handleDiscordLoginDeepLink(it) }
         when (intent?.action) {
             "com.stash.opusplayer.ACTION_JUMP_TO_SOURCE" -> jumpToLastPlaybackSource()
             "com.stash.opusplayer.ACTION_GO_TO_ARTIST" -> {

@@ -81,6 +81,20 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lumisound" android:host="discord-verify" />
             </intent-filter>
+
+            <!-- Discord OAuth2 SIGN-IN callback: distinct deep link from the
+                 linking flow above. The bridge distinguishes "sign in with
+                 Discord" from "link Discord to my account" by decoding the
+                 OAuth state token, and redirects to a different deep link
+                 per purpose (main.py's _DISCORD_LOGIN_CALLBACK_DEEP_LINK vs.
+                 _DISCORD_CALLBACK_DEEP_LINK). See BridgeSettingsViewModel's
+                 startDiscordSignIn()/DiscordLoginEvents. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lumisound" android:host="discord-login" />
+            </intent-filter>
         </activity>
         
         <activity

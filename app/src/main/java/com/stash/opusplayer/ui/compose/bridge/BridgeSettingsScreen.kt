@@ -2,6 +2,7 @@ package com.stash.opusplayer.ui.compose.bridge
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,6 +57,13 @@ fun BridgeSettingsScreen(
     onViewMyProfile: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(uiState.pendingDiscordAuthorizeUrl) {
+        val url = uiState.pendingDiscordAuthorizeUrl ?: return@LaunchedEffect
+        CustomTabsIntent.Builder().build().launchUrl(context, android.net.Uri.parse(url))
+        viewModel.consumePendingDiscordAuthorizeUrl()
+    }
 
     BridgeSettingsContent(
         state = uiState,
@@ -72,6 +81,7 @@ fun BridgeSettingsScreen(
         onLogin = viewModel::login,
         onRegister = viewModel::register,
         onLogout = viewModel::logout,
+        onDiscordSignIn = viewModel::startDiscordSignIn,
         onTwoFactorCodeChanged = viewModel::onTwoFactorCodeChanged,
         onCompleteTwoFactorLogin = viewModel::completeTwoFactorLogin,
         onCancelTwoFactorLogin = viewModel::cancelTwoFactorLogin,
@@ -116,6 +126,7 @@ private fun BridgeSettingsContent(
     onLogin: () -> Unit,
     onRegister: () -> Unit,
     onLogout: () -> Unit,
+    onDiscordSignIn: () -> Unit,
     onTwoFactorCodeChanged: (String) -> Unit,
     onCompleteTwoFactorLogin: () -> Unit,
     onCancelTwoFactorLogin: () -> Unit,
@@ -176,6 +187,7 @@ private fun BridgeSettingsContent(
             onLogin = onLogin,
             onRegister = onRegister,
             onLogout = onLogout,
+            onDiscordSignIn = onDiscordSignIn,
             onTwoFactorCodeChanged = onTwoFactorCodeChanged,
             onCompleteTwoFactorLogin = onCompleteTwoFactorLogin,
             onCancelTwoFactorLogin = onCancelTwoFactorLogin,
@@ -835,6 +847,7 @@ private fun AccountSection(
     onLogin: () -> Unit,
     onRegister: () -> Unit,
     onLogout: () -> Unit,
+    onDiscordSignIn: () -> Unit,
     onTwoFactorCodeChanged: (String) -> Unit,
     onCompleteTwoFactorLogin: () -> Unit,
     onCancelTwoFactorLogin: () -> Unit,
@@ -875,7 +888,8 @@ private fun AccountSection(
                     onRegisterPasswordChanged = onRegisterPasswordChanged,
                     onRegisterEmailChanged = onRegisterEmailChanged,
                     onLogin = onLogin,
-                    onRegister = onRegister
+                    onRegister = onRegister,
+                    onDiscordSignIn = onDiscordSignIn
                 )
             }
 
@@ -1030,9 +1044,29 @@ private fun LoggedOutContent(
     onRegisterPasswordChanged: (String) -> Unit,
     onRegisterEmailChanged: (String) -> Unit,
     onLogin: () -> Unit,
-    onRegister: () -> Unit
+    onRegister: () -> Unit,
+    onDiscordSignIn: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(
+            onClick = onDiscordSignIn,
+            enabled = !state.isStartingDiscordSignIn,
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = androidx.compose.ui.graphics.Color(0xFF5865F2)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (state.isStartingDiscordSignIn) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = androidx.compose.ui.graphics.Color.White
+                )
+            } else {
+                Text("Continue with Discord", color = androidx.compose.ui.graphics.Color.White)
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = { onAuthModeChanged(AuthMode.LOGIN) }) {
                 Text(

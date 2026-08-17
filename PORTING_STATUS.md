@@ -549,6 +549,28 @@ confirmed by directory/endpoint survey — not touched by this branch:
   the server and Lumisound's own UI already treat manual entry as a
   first-class alternative to scanning, not an afterthought.
 
+  **Sign in with Discord is now ported** too (a "Continue with Discord"
+  button on the logged-out `Bridge Settings` screen), ported from
+  `AccountService+DiscordLogin.swift`. Distinct from the already-ported
+  Discord account-*linking* flow (`DiscordVerificationApi.kt`,
+  `/api/discord/oauth/*`, used while already signed in) -- this is the
+  logged-out OAuth login path (`GET /auth/discord/start` +
+  `/api/discord/oauth/callback`), which transparently logs into an
+  existing Discord-linked account or silently creates one, same as iOS.
+  iOS uses `ASWebAuthenticationSession`; Android has no direct
+  equivalent, so this reuses the exact Chrome Custom Tabs + deep-link
+  mechanism the linking flow already established -- a second
+  `lumisound://discord-login` intent-filter (distinct from
+  `discord-verify`; the bridge distinguishes the two purposes server-side
+  by decoding the OAuth state token) alongside a new
+  `DiscordLoginEvents` singleton that bridges the deep link (received at
+  `MainActivity`, Activity-scoped) to `BridgeSettingsViewModel`
+  (Fragment-scoped, owns the login UI), since the two have no other way
+  to talk to each other if the deep link lands while the ViewModel
+  already exists. A `requires_2fa` redirect reuses the exact same
+  pending-token mechanism and UI as password-login 2FA, matching how
+  iOS's `pendingTOTPToken` is shared between both paths.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

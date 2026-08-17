@@ -67,6 +67,19 @@ data class TwoFactorStatusResponse(
 )
 
 /**
+ * Response of GET /auth/discord/start (main.py ~L14342). [authorizeUrl] is
+ * Discord's own OAuth consent-screen URL, opened in a Custom Tab; the
+ * server-side callback then redirects to `lumisound://discord-login` with
+ * either `?success=true&token=...`, `?success=true&requires_2fa=true&
+ * pending_token=...` (same pending-token mechanism as password login's
+ * 2FA branch), or `?success=false&reason=...` -- see
+ * [com.stash.opusplayer.bridge.DiscordLoginEvents].
+ */
+data class DiscordLoginStartResponse(
+    @SerializedName("authorize_url") val authorizeUrl: String
+)
+
+/**
  * Response of POST /auth/2fa/setup (main.py ~L4969). [secret] is the raw
  * base32 TOTP secret -- shown as a manual-entry fallback for authenticator
  * apps that can't scan a QR code, same as Lumisound's own UI treats it (not
@@ -162,6 +175,11 @@ interface AuthApi {
     @Headers("X-Bridge-Auth-Mode: none")
     @POST("auth/2fa/login")
     suspend fun completeTwoFactorLogin(@Body body: TwoFactorLoginRequest): Response<AuthResponse>
+
+    /** No body/params -- mints a login-purpose OAuth state token server-side. */
+    @Headers("X-Bridge-Auth-Mode: none")
+    @GET("auth/discord/start")
+    suspend fun startDiscordLogin(): Response<DiscordLoginStartResponse>
 
     @Headers("X-Bridge-Auth-Mode: user")
     @POST("auth/logout")

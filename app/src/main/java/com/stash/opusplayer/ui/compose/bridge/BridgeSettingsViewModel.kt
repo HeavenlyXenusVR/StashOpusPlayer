@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonParser
 import com.stash.opusplayer.bridge.BridgeConfig
 import com.stash.opusplayer.bridge.BridgeTokenStore
+import com.stash.opusplayer.bridge.DiscordLoginEvents
+import com.stash.opusplayer.bridge.DiscordLoginOutcome
 import com.stash.opusplayer.bridge.api.AuthApi
 import com.stash.opusplayer.bridge.api.BridgeSession
 import com.stash.opusplayer.bridge.api.ChangePasswordRequest
@@ -73,6 +75,10 @@ data class BridgeSettingsUiState(
     val pendingToken: String? = null,
     val twoFactorCode: String = "",
 
+    // --- Sign in with Discord ---
+    val isStartingDiscordSignIn: Boolean = false,
+    val pendingDiscordAuthorizeUrl: String? = null,
+
     // --- Profile (shown once logged in) ---
     val displayNameInput: String = "",
     val isSavingDisplayName: Boolean = false,
@@ -130,7 +136,8 @@ class BridgeSettingsViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val bridgeConfig: BridgeConfig,
     private val tokenStore: BridgeTokenStore,
-    private val authApi: AuthApi
+    private val authApi: AuthApi,
+    private val discordLoginEvents: DiscordLoginEvents
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -153,6 +160,32 @@ class BridgeSettingsViewModel @Inject constructor(
                 )
             }
             if (_uiState.value.isLoggedIn) refreshProfile()
+        }
+        viewModelScope.launch {
+            discordLoginEvents.outcomes.collect { outcome ->
+                when (outcome) {
+                    is DiscordLoginOutcome.SignedIn -> completeDiscordSignIn(outcome.token)
+                    is DiscordLoginOutcome.RequiresTwoFactor -> {
+                        _uiState.update {
+                            it.copy(
+                                isTwoFactorPending = true,
+                                pendingToken = outcome.pendingToken,
+                                twoFactorCode = "",
+                                authError = null,
+                                authInfo = "Enter the 6-digit code from your authenticator app."
+                            )
+                        }
+                    }
+                    is DiscordLoginOutcome.Failed -> {
+                        val message = when (outcome.reason) {
+                            "already_linked_elsewhere" -> "That Discord account is already linked to a different account."
+                            "expired_state", "exchange_failed", "invalid_response" -> "Discord sign-in failed -- try again."
+                            else -> "Discord sign-in was cancelled."
+                        }
+                        _uiState.update { it.copy(isStartingDiscordSignIn = false, authError = message) }
+                    }
+                }
+            }
         }
     }
 
@@ -372,6 +405,56 @@ class BridgeSettingsViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    /** Requests a Discord OAuth authorize URL to open in a Custom Tab. The actual sign-in completes asynchronously via [discordLoginEvents] once the `lumisound://discord-login` redirect lands. */
+    fun startDiscordSignIn() {
+        if (_uiState.value.isStartingDiscordSignIn) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isStartingDiscordSignIn = true, authError = null, authInfo = null) }
+            try {
+                val response = authApi.startDiscordLogin()
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(pendingDiscordAuthorizeUrl = response.body()?.authorizeUrl) }
+                } else {
+                    _uiState.update { it.copy(isStartingDiscordSignIn = false, authError = extractErrorMessage(response)) }
+                }
+            } catch (t: Throwable) {
+                _uiState.update {
+                    it.copy(isStartingDiscordSignIn = false, authError = "Something went wrong. Check your connection and Bridge server settings.")
+                }
+            }
+        }
+    }
+
+    /** Called by the UI right after launching the Custom Tab for [BridgeSettingsUiState.pendingDiscordAuthorizeUrl], so it doesn't relaunch on recomposition. */
+    fun consumePendingDiscordAuthorizeUrl() {
+        _uiState.update { it.copy(pendingDiscordAuthorizeUrl = null) }
+    }
+
+    /** No [BridgeUser] comes back with the deep link, only a raw session token -- fetches the username via [AuthApi.me] same as any other login path needs for display. */
+    private fun completeDiscordSignIn(token: String) {
+        viewModelScope.launch {
+            tokenStore.saveSession(token, username = null)
+            _uiState.update {
+                it.copy(
+                    isStartingDiscordSignIn = false,
+                    isLoggedIn = true,
+                    isTwoFactorPending = false,
+                    pendingToken = null,
+                    twoFactorCode = "",
+                    authError = null,
+                    authInfo = null
+                )
+            }
+            val response = runCatching { authApi.me() }.getOrNull()
+            val user = if (response?.isSuccessful == true) response.body() else null
+            if (user != null) {
+                tokenStore.saveSession(token, user.username)
+                _uiState.update { it.copy(username = user.username) }
+            }
+            refreshProfile()
         }
     }
 
@@ -779,6 +862,8 @@ class BridgeSettingsViewModel @Inject constructor(
                     isTwoFactorPending = false,
                     pendingToken = null,
                     twoFactorCode = "",
+                    isStartingDiscordSignIn = false,
+                    pendingDiscordAuthorizeUrl = null,
                     displayNameInput = "",
                     displayNameJustSaved = false,
                     userId = null,
