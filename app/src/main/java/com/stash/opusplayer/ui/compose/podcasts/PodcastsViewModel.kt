@@ -7,6 +7,7 @@ import com.stash.opusplayer.StashOpusApplication
 import com.stash.opusplayer.bridge.api.PodcastEpisode
 import com.stash.opusplayer.bridge.api.PodcastEpisodeProgress
 import com.stash.opusplayer.bridge.api.PodcastEpisodeProgressRequest
+import com.stash.opusplayer.bridge.api.PodcastSearchResult
 import com.stash.opusplayer.bridge.api.PodcastSubscribeRequest
 import com.stash.opusplayer.bridge.api.PodcastSubscription
 import com.stash.opusplayer.bridge.api.PodcastsApi
@@ -25,11 +26,11 @@ import kotlinx.coroutines.launch
 
 /**
  * Backs `Settings -> Podcasts`. Covers subscribe/list/mute/unsubscribe +
- * episode browsing + direct playback + playback-progress sync -- chapters,
- * OPML import/export, and search/trending discovery are still real bridge
- * features not modeled in this pass (see [PodcastsApi]'s class doc). List/
- * detail (subscriptions vs. one feed's episodes) is one Compose island
- * with internal state, same pattern as
+ * episode browsing + direct playback + playback-progress sync + search/
+ * trending discovery -- chapters and OPML import/export are still real
+ * bridge features not modeled in this pass (see [PodcastsApi]'s class
+ * doc). List/detail (subscriptions vs. one feed's episodes) is one
+ * Compose island with internal state, same pattern as
  * [com.stash.opusplayer.ui.compose.playlists.CloudPlaylistsViewModel].
  *
  * Episode playback needs no bridge resolve step at all -- [PodcastEpisode.audioUrl]
@@ -50,6 +51,9 @@ import kotlinx.coroutines.launch
  * guid>` -- mirroring Lumisound's own identical reuse-the-Song-model trick
  * (`Song` has no dedicated podcast fields on either platform).
  */
+/** Which half of the screen is currently shown. */
+enum class PodcastsTab { SUBSCRIPTIONS, DISCOVER }
+
 @HiltViewModel
 class PodcastsViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
@@ -57,9 +61,23 @@ class PodcastsViewModel @Inject constructor(
 ) : ViewModel() {
 
     data class UiState(
+        val selectedTab: PodcastsTab = PodcastsTab.SUBSCRIPTIONS,
+
         val isLoadingSubscriptions: Boolean = true,
         val subscriptions: List<PodcastSubscription> = emptyList(),
         val subscriptionsError: String? = null,
+
+        val searchQuery: String = "",
+        val isSearching: Boolean = false,
+        val searchResults: List<PodcastSearchResult> = emptyList(),
+        val searchError: String? = null,
+        val hasSearched: Boolean = false,
+
+        val isLoadingTrending: Boolean = true,
+        val trending: List<PodcastSearchResult> = emptyList(),
+        val trendingError: String? = null,
+
+        val subscribingFeedUrls: Set<String> = emptySet(),
 
         val feedUrlInput: String = "",
         val isSubscribing: Boolean = false,
@@ -81,6 +99,11 @@ class PodcastsViewModel @Inject constructor(
 
     init {
         loadSubscriptions()
+        loadTrending()
+    }
+
+    fun onTabSelected(tab: PodcastsTab) {
+        _uiState.update { it.copy(selectedTab = tab) }
     }
 
     fun loadSubscriptions() {
@@ -246,5 +269,57 @@ class PodcastsViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         progressPushJob?.cancel()
+    }
+
+    // --- Discovery (search / trending) ---------------------------------------
+
+    fun onSearchQueryChanged(value: String) {
+        _uiState.update { it.copy(searchQuery = value) }
+    }
+
+    fun searchPodcasts() {
+        val query = _uiState.value.searchQuery.trim()
+        if (query.isEmpty() || _uiState.value.isSearching) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSearching = true, searchError = null) }
+            try {
+                val response = podcastsApi.searchPodcasts(query)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isSearching = false, hasSearched = true, searchResults = response.body().orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isSearching = false, hasSearched = true, searchError = "Search failed (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSearching = false, hasSearched = true, searchError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    fun loadTrending() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingTrending = true, trendingError = null) }
+            try {
+                val response = podcastsApi.getTrendingPodcasts()
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingTrending = false, trending = response.body().orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingTrending = false, trendingError = "Couldn't load trending podcasts (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingTrending = false, trendingError = "Something went wrong. Check your connection and sign-in.") }
+            }
+        }
+    }
+
+    /** Subscribing to an already-subscribed feed is a harmless no-op server-side (upsert), so no "already subscribed" check is needed here. */
+    fun subscribeToResult(result: PodcastSearchResult) {
+        val feedUrl = result.feedUrl
+        if (_uiState.value.subscribingFeedUrls.contains(feedUrl)) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(subscribingFeedUrls = it.subscribingFeedUrls + feedUrl) }
+            runCatching { podcastsApi.subscribe(PodcastSubscribeRequest(feedUrl)) }
+            _uiState.update { it.copy(subscribingFeedUrls = it.subscribingFeedUrls - feedUrl) }
+            loadSubscriptions()
+        }
     }
 }

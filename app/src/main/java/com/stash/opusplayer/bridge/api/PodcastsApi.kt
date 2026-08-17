@@ -79,6 +79,22 @@ data class PodcastEpisodeProgress(
 )
 
 /**
+ * One result of GET /podcasts/search or GET /podcasts/trending (main.py
+ * ~L17712/17782) -- both iTunes-Search-API-backed, both return this exact
+ * same shape. [feedUrl] is directly usable as-is with [PodcastsApi.subscribe].
+ * Trending is server-filtered to exclude shows the caller is already
+ * subscribed to; search is not (searching for an already-subscribed show
+ * is a normal, harmless thing to do -- [PodcastsApi.subscribe]'s own
+ * `ON CONFLICT` upsert makes re-subscribing a no-op either way).
+ */
+data class PodcastSearchResult(
+    val title: String? = null,
+    val artist: String? = null,
+    @SerializedName("feed_url") val feedUrl: String,
+    @SerializedName("artwork_url") val artworkUrl: String? = null
+)
+
+/**
  * Podcast subscriptions + episode listing + playback-progress sync, ported
  * from the podcast slice of Lumisound's account services (a full podcast
  * subsystem also including chapters, OPML import/export, and search/
@@ -128,4 +144,17 @@ interface PodcastsApi {
         @Query("feed_url") feedUrl: String? = null,
         @Query("limit") limit: Int = 50
     ): Response<List<PodcastEpisodeProgress>>
+
+    /** Not under `/user/` (matches the bridge's own routing) but still JWT-gated like everything else here. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("podcasts/search")
+    suspend fun searchPodcasts(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 20
+    ): Response<List<PodcastSearchResult>>
+
+    /** Apple's public top-podcasts chart, server-filtered to exclude shows the caller already follows. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("podcasts/trending")
+    suspend fun getTrendingPodcasts(@Query("limit") limit: Int = 20): Response<List<PodcastSearchResult>>
 }

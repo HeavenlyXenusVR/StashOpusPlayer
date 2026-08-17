@@ -17,6 +17,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stash.opusplayer.bridge.api.PodcastEpisode
+import com.stash.opusplayer.bridge.api.PodcastSearchResult
 import com.stash.opusplayer.bridge.api.PodcastSubscription
 
 @Composable
@@ -41,7 +44,24 @@ fun PodcastsScreen(
     if (state.selectedFeedUrl != null) {
         EpisodesContent(state = state, viewModel = viewModel, modifier = modifier)
     } else {
-        SubscriptionsContent(state = state, viewModel = viewModel, modifier = modifier)
+        Column(modifier = modifier.fillMaxSize()) {
+            TabRow(selectedTabIndex = state.selectedTab.ordinal) {
+                Tab(
+                    selected = state.selectedTab == PodcastsTab.SUBSCRIPTIONS,
+                    onClick = { viewModel.onTabSelected(PodcastsTab.SUBSCRIPTIONS) },
+                    text = { Text("Subscriptions") }
+                )
+                Tab(
+                    selected = state.selectedTab == PodcastsTab.DISCOVER,
+                    onClick = { viewModel.onTabSelected(PodcastsTab.DISCOVER) },
+                    text = { Text("Discover") }
+                )
+            }
+            when (state.selectedTab) {
+                PodcastsTab.SUBSCRIPTIONS -> SubscriptionsContent(state = state, viewModel = viewModel)
+                PodcastsTab.DISCOVER -> DiscoverContent(state = state, viewModel = viewModel)
+            }
+        }
     }
 }
 
@@ -129,6 +149,100 @@ private fun SubscriptionRow(
             )
             TextButton(onClick = onToggleMute) { Text(if (subscription.notificationsMuted) "Unmute" else "Mute") }
             TextButton(onClick = onUnsubscribe) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+        }
+    }
+}
+
+@Composable
+private fun DiscoverContent(state: PodcastsViewModel.UiState, viewModel: PodcastsViewModel) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = state.searchQuery,
+                onValueChange = viewModel::onSearchQueryChanged,
+                label = { Text("Search podcasts") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                modifier = Modifier.weight(1f)
+            )
+            Button(onClick = viewModel::searchPodcasts, enabled = !state.isSearching && state.searchQuery.isNotBlank()) {
+                if (state.isSearching) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Text("Search")
+                }
+            }
+        }
+
+        if (state.hasSearched) {
+            Text(text = "Results", style = MaterialTheme.typography.titleMedium)
+            when {
+                state.searchError != null -> Text(text = state.searchError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                state.searchResults.isEmpty() -> Text(
+                    text = "No podcasts found.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                else -> state.searchResults.forEach { result ->
+                    PodcastResultRow(
+                        result = result,
+                        isSubscribing = state.subscribingFeedUrls.contains(result.feedUrl),
+                        onSubscribe = { viewModel.subscribeToResult(result) }
+                    )
+                }
+            }
+            Divider()
+        }
+
+        Text(text = "Trending", style = MaterialTheme.typography.titleMedium)
+        when {
+            state.isLoadingTrending -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            state.trendingError != null -> Text(text = state.trendingError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            state.trending.isEmpty() -> Text(
+                text = "Nothing trending right now.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            else -> state.trending.forEach { result ->
+                PodcastResultRow(
+                    result = result,
+                    isSubscribing = state.subscribingFeedUrls.contains(result.feedUrl),
+                    onSubscribe = { viewModel.subscribeToResult(result) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PodcastResultRow(result: PodcastSearchResult, isSubscribing: Boolean, onSubscribe: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = result.title?.takeIf { it.isNotBlank() } ?: result.feedUrl,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                result.artist?.takeIf { it.isNotBlank() }?.let {
+                    Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (isSubscribing) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                TextButton(onClick = onSubscribe) { Text("Subscribe") }
+            }
         }
     }
 }

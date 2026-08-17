@@ -286,9 +286,8 @@ confirmed by directory/endpoint survey — not touched by this branch:
   sourced track list elsewhere in this app, which all need the
   search-or-discover -> resolve -> play two-step. Deliberately trimmed
   from the bridge's full podcast subsystem: chapters
-  (`GET /user/podcasts/chapters`), OPML import/export, and search/
-  trending discovery (`/podcasts/search`, `/podcasts/trending`) are
-  all real, separately-portable features not attempted in this pass.
+  (`GET /user/podcasts/chapters`) and OPML import/export are real,
+  separately-portable features not attempted in this pass.
 
   **Playback-progress sync (resume-where-you-left-off) was added in a
   follow-up pass** (`PUT`/`GET /user/podcasts/episode-progress`).
@@ -309,6 +308,17 @@ confirmed by directory/endpoint survey — not touched by this branch:
   this into `MusicPlayerManager` itself for true background tracking;
   this pass keeps the change fully additive and confined to one
   screen's ViewModel.
+
+  **Podcast search + trending discovery were added in a follow-up
+  pass** (`GET /podcasts/search`, `GET /podcasts/trending`, a new
+  "Discover" tab alongside Subscriptions). Both are iTunes-Search-API-
+  backed (public, no operator API key needed) and return the exact
+  same result shape; trending is server-filtered to exclude shows
+  already subscribed, search is not (re-subscribing to an
+  already-followed show is a harmless no-op upsert either way). Before
+  this, a podcast could only be added by already knowing its raw RSS
+  feed URL -- this is the first real podcast discovery surface in the
+  app.
 
   Still unbuilt: cross-device sync, push notifications, weekly mix
   (blocked on an entirely separate "personal cloud music library" API
