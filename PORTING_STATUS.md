@@ -112,6 +112,22 @@ confirmed by directory/endpoint survey — not touched by this branch:
   on-this-day, artist bio. `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
+
+  **Cloud Backups (`/user/backups*`) are now ported** too
+  (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
+  Metadata-only, matching the bridge's own design -- server-side snapshots
+  are favorites+playlists (+ iOS-only settings this client doesn't touch),
+  never audio files. Important scoping note carried over from `SyncApi`'s
+  existing doc comment: snapshots are only ever created server-side before
+  a `/user/sync` push or a restore, and Stash deliberately never pushes
+  `/user/sync` (see that doc comment for why) -- so a Stash-only account
+  sees an empty backup list until it's also been used with Lumisound at
+  least once, or until its own first restore self-seeds one entry. This is
+  surfaced directly in the empty-state UI, not a bug. Restore matches a
+  snapshot's favorites/playlist tracks against the local library by
+  title[+artist] (same fallback-matching approach `M3UImportService`
+  already established) and merges rather than replaces locally, since a
+  snapshot may reference songs that only exist on the other device.
 - **Watch/widgets/system integration**: `PhoneWatchSync`, `WidgetDataView`,
   Live Activities, Siri App Intents (`LumisoundAppIntents`), Focus Filter.
   No Android Wear or widget work has started.

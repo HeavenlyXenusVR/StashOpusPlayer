@@ -83,6 +83,46 @@ data class AddFavoriteResponse(
 )
 
 /**
+ * One row of GET /user/backups (main.py ~L7590) -- a summary only, no
+ * `favorites`/`playlists` payload (that only comes back via the restore
+ * response, matching `sync_pull`'s shape). Snapshots are created
+ * server-side automatically before every `/user/sync` push and before
+ * every restore -- there's no "create a backup now" endpoint, so this
+ * list is empty until the account has been used with a client that DOES
+ * push `/user/sync` (Lumisound), or after this app's own first restore
+ * (which itself creates a `pre_restore` snapshot as a side effect).
+ */
+data class BridgeBackupSummary(
+    val id: Long,
+    val reason: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("favorite_count") val favoriteCount: Int = 0,
+    @SerializedName("playlist_count") val playlistCount: Int = 0
+)
+
+data class BackupsResponse(
+    val backups: List<BridgeBackupSummary> = emptyList()
+)
+
+/** Response of DELETE /user/backups: `{"status": "cleared", "deleted": <int>}`. */
+data class ClearBackupsResponse(
+    val status: String,
+    val deleted: Int = 0
+)
+
+/**
+ * Response of POST /user/backups/{id}/restore -- main.py returns the SAME
+ * shape `GET /user/sync` does (the full settings blob), but only
+ * [favorites]/[playlists] are modeled here; everything else in that blob
+ * is the iOS-specific settings SyncApi's own doc comment already
+ * describes as out of scope for this client.
+ */
+data class RestoreBackupResponse(
+    val favorites: List<BridgeFavorite> = emptyList(),
+    val playlists: List<BridgePlaylist> = emptyList()
+)
+
+/**
  * Playlists + favorites — the "basic sync" subset covered in this pass. Both
  * require the user's JWT (`get_current_user`), tagged
  * `X-Bridge-Auth-Mode: user`.
@@ -95,8 +135,11 @@ data class AddFavoriteResponse(
  * it wholesale from this client would either silently drop fields or clobber
  * server state with meaningless defaults. A real Android /user/sync
  * integration needs its own field-by-field design, not a blind port of the
- * iOS request shape. Also not modeled: `/user/library/inventory`, backups
- * (`/user/backups*`), `/user/stats`, `/user/history`, `/user/settings`.
+ * iOS request shape. Backups (`/user/backups*`) ARE modeled below, since
+ * they only ever expose the favorites/playlists subset (never the
+ * iOS-settings blob) — see [BridgeBackupSummary]/[RestoreBackupResponse].
+ * Still not modeled: `/user/library/inventory`, `/user/folder-backups`,
+ * `/user/stats`, `/user/history`, `/user/settings`.
  */
 interface SyncApi {
 
@@ -134,4 +177,18 @@ interface SyncApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @DELETE("user/favorites/{songId}")
     suspend fun removeFavorite(@Path("songId") songId: String): Response<Unit>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/backups")
+    suspend fun listBackups(): Response<BackupsResponse>
+
+    /** Deletes ALL of this user's backup snapshots -- does not touch live favorites/playlists. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @DELETE("user/backups")
+    suspend fun clearBackups(): Response<ClearBackupsResponse>
+
+    /** Replace-everything restore: server snapshots current state first (reason "pre_restore"), then overwrites live favorites/playlists/settings from the chosen snapshot. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/backups/{backupId}/restore")
+    suspend fun restoreBackup(@Path("backupId") backupId: Long): Response<RestoreBackupResponse>
 }

@@ -14,6 +14,7 @@ import com.stash.opusplayer.R
 import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
+import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
@@ -174,6 +175,14 @@ class SettingsFragment : Fragment() {
             summary = "Sign in with the same account you use on Lumisound -- both apps talk to the same server."
         ) {
             openSettingsScreen(BridgeAccountFragment(), "Account & Server")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Backup History",
+            summary = "Restore favorites and playlists from an automatic snapshot -- shared with Lumisound."
+        ) {
+            openSettingsScreen(BackupHistoryFragment(), "Backup History")
         }
 
         addSettingsTile(
