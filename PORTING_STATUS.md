@@ -174,9 +174,27 @@ confirmed by directory/endpoint survey — not touched by this branch:
   needed zero new client-side triggering logic. Distinct from Discord
   Rich Presence, which needs a local desktop IPC daemon (`discord-rpc/
   install.sh` on iOS) and has **no Android equivalent** -- ruled out of
-  this port entirely, not just deferred. Discord account verification
-  (OAuth2 "Discord Verified" badge) is also still unbuilt, separate from
-  both of the above.
+  this port entirely, not just deferred.
+
+  **Discord account verification is now ported too** (`Settings ->
+  Discord Verification`, `GET /api/discord/oauth/start`, `GET`/`DELETE
+  /api/discord/verification`). A real OAuth2 "identify"-scope
+  authorization-code flow -- proves the signed-in user actually owns a
+  specific Discord account, unlike the webhook above which proves
+  nothing about identity. iOS uses `ASWebAuthenticationSession`
+  specifically so the OS can observe the redirect without polling;
+  Chrome Custom Tabs (new `androidx.browser` dependency, previously
+  unused in this project) is the direct Android equivalent, paired with
+  an intent-filter on `MainActivity` for the bridge's fixed
+  `lumisound://discord-verify` redirect URI (not per-client-configurable
+  server-side, so Android registers the exact same scheme/host iOS does
+  rather than a Stash-specific one). `MainActivity` is now
+  `launchMode="singleTask"` so that redirect reliably reaches the
+  existing activity instance via `onNewIntent` instead of spawning a
+  second one. The actual code exchange (with Discord's client secret)
+  happens entirely server-side -- this client never sees an
+  authorization code or an exchanged token, only the final linked/
+  not-linked state.
 
   Still unbuilt: folder backup, cross-device sync, subscriptions/feed,
   push notifications, weekly mix (blocked on an entirely separate

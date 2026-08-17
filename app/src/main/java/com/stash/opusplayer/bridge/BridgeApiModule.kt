@@ -4,6 +4,7 @@ import com.google.gson.GsonBuilder
 import com.stash.opusplayer.bridge.api.AuthApi
 import com.stash.opusplayer.bridge.api.FingerprintApi
 import com.stash.opusplayer.bridge.api.SocialApi
+import com.stash.opusplayer.bridge.api.DiscordVerificationApi
 import com.stash.opusplayer.bridge.api.DiscordWebhookApi
 import com.stash.opusplayer.bridge.api.DiscoveryApi
 import com.stash.opusplayer.bridge.api.StreamingApi
@@ -112,4 +113,8 @@ object BridgeApiModule {
     @Provides
     @Singleton
     fun provideDiscordWebhookApi(retrofit: Retrofit): DiscordWebhookApi = retrofit.create(DiscordWebhookApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDiscordVerificationApi(retrofit: Retrofit): DiscordVerificationApi = retrofit.create(DiscordVerificationApi::class.java)
 }

@@ -264,7 +264,10 @@ dependencies {
     
     // Fragment
     implementation 'androidx.fragment:fragment-ktx:1.6.2'
-    
+
+    // Chrome Custom Tabs -- Discord OAuth2 verification's authorize-url step
+    implementation 'androidx.browser:browser:1.8.0'
+
     // Room database
     implementation 'androidx.room:room-runtime:2.6.1'
     implementation 'androidx.room:room-ktx:2.6.1'

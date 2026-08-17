@@ -55,17 +55,31 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.StashOpusPlayer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            
+
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="audio/*" />
+            </intent-filter>
+
+            <!-- Discord OAuth2 verification callback: the bridge server always
+                 redirects here after the code exchange (main.py's
+                 _DISCORD_CALLBACK_DEEP_LINK is a fixed constant, not
+                 per-client-configurable), matching the exact scheme/host
+                 Lumisound's iOS build also registers. See
+                 DiscordVerificationScreen/DiscordVerificationViewModel. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lumisound" android:host="discord-verify" />
             </intent-filter>
         </activity>
         

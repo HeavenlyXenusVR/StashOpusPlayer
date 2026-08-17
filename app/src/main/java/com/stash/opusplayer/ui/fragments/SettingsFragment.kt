@@ -18,6 +18,7 @@ import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
 import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.CloudPlaylistsFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscordVerificationFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscordWebhookFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscoveryFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
@@ -188,6 +189,14 @@ class SettingsFragment : Fragment() {
             summary = "Post a \"Now Playing\" message to a Discord channel whenever you start a track."
         ) {
             openSettingsScreen(DiscordWebhookFragment(), "Discord Webhook")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discord Verification",
+            summary = "Prove you own a specific Discord account -- separate from the Now Playing webhook."
+        ) {
+            openSettingsScreen(DiscordVerificationFragment(), "Discord Verification")
         }
 
         addSettingsTile(

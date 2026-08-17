@@ -144,6 +144,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         setupBottomNavigation()
         checkPermissionsAndSetup()
         requestNotificationPermissionIfNeeded()
+        handleDiscordVerifyDeepLink(intent)
 
         // Observe image download tracker to show top banner
         lifecycleScope.launch {
@@ -537,8 +538,36 @@ Check for updates anytime from Settings.""")
         hideLoadingOverlay()
     }
 
+    /**
+     * Handles the `lumisound://discord-verify` redirect the bridge server
+     * always sends the Chrome Custom Tab back to once the Discord OAuth2
+     * code exchange finishes (see the manifest's intent-filter and
+     * DiscordVerificationApi's KDoc for why that fixed scheme/host, not a
+     * Stash-specific one). Just surfaces a Toast -- the actual verified
+     * state comes from DiscordVerificationScreen re-fetching
+     * GET /api/discord/verification on its own resume, not from anything
+     * signaled here.
+     */
+    private fun handleDiscordVerifyDeepLink(intent: Intent) {
+        val data = intent.data ?: return
+        if (data.scheme != "lumisound" || data.host != "discord-verify") return
+        val success = data.getQueryParameter("success") == "true"
+        if (success) {
+            Toast.makeText(this, "Discord account linked", Toast.LENGTH_SHORT).show()
+        } else {
+            val reason = data.getQueryParameter("reason")
+            val message = when (reason) {
+                "already_linked_elsewhere" -> "That Discord account is already linked to a different account."
+                "expired_state", "exchange_failed", "invalid_response" -> "Discord verification failed -- try again."
+                else -> "Discord verification was cancelled."
+            }
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        intent?.let { handleDiscordVerifyDeepLink(it) }
         when (intent?.action) {
             "com.stash.opusplayer.ACTION_JUMP_TO_SOURCE" -> jumpToLastPlaybackSource()
             "com.stash.opusplayer.ACTION_GO_TO_ARTIST" -> {
