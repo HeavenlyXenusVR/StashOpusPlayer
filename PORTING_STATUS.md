@@ -278,6 +278,18 @@ confirmed by directory/endpoint survey — not touched by this branch:
   rather than an error. `Settings -> Blocked Users` lists everyone
   you've blocked with a per-row Unblock action, ported from Lumisound's
   `BlockedUsersView`.
+
+  **Music Match compatibility is now ported** too (`GET
+  /api/social/compatibility/{id}`) -- a friends-only 0-100% score card
+  (70% shared-artist / 30% shared-genre Jaccard similarity, weighted
+  toward specific-artist overlap over broad genre labels) shown on a
+  friend's profile screen, with a progress bar and shared-artist/
+  shared-genre text. Shows "Not enough listening history yet to compute
+  a match" instead of a 0% score when either side's history is too
+  thin. Deliberately does NOT model the companion
+  `/api/social/blend/{id}` "press play" mix endpoint (a full playable
+  blended mix) -- the score card alone was the contained chunk; a
+  playable blend is real future scope.
   `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.

@@ -106,18 +106,36 @@ data class BlockedUsersResponse(
 )
 
 /**
+ * Response of GET /api/social/compatibility/{userId} (main.py ~L16539) --
+ * a friends-only "Music Match" score (0-100, weighted 70% shared-artist /
+ * 30% shared-genre Jaccard similarity). [insufficientData] is true (with
+ * [score] pinned to 0 and both share lists empty) when either side's
+ * listening history isn't rich enough to compute anything meaningful --
+ * show a plain "not enough history" message in that case, not a 0% match.
+ * Deliberately does NOT model the companion `/api/social/blend/{userId}`
+ * "press play" mix endpoint (a full playable blended-artists mix) -- out
+ * of scope for this pass, the score card alone is the contained chunk.
+ */
+data class MusicCompatibility(
+    val score: Int = 0,
+    @SerializedName("insufficient_data") val insufficientData: Boolean = false,
+    @SerializedName("shared_artists") val sharedArtists: List<String> = emptyList(),
+    @SerializedName("shared_genres") val sharedGenres: List<String> = emptyList()
+)
+
+/**
  * A representative subset of `/api/social/…` — friends list/requests, a
- * presence heartbeat, the friends activity feed/leaderboard, and blocking.
- * All require the user's JWT (`get_current_user`), tagged
- * `X-Bridge-Auth-Mode: user`.
+ * presence heartbeat, the friends activity feed/leaderboard, blocking, and
+ * a friend's compatibility score. All require the user's JWT
+ * (`get_current_user`), tagged `X-Bridge-Auth-Mode: user`.
  *
  * NOT modeled in this pass (left for follow-up): profile endpoints
  * (/api/social/profile/…, including avatar/banner upload and pinned tracks
  * — banner + guestbook comments ARE modeled, see
  * [com.stash.opusplayer.bridge.api.SocialProfileApi]), friend nicknames/
- * tags, presence-for-friends / listening-together, compatibility, and
- * discovery (/social/discover, /social/similar-listeners,
- * /social/trending-by-energy).
+ * tags, presence-for-friends / listening-together, the blend-mix
+ * companion to compatibility, and discovery (/social/discover,
+ * /social/similar-listeners, /social/trending-by-energy).
  */
 interface SocialApi {
 
@@ -170,4 +188,9 @@ interface SocialApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("api/social/block")
     suspend fun getBlockedUsers(): Response<BlockedUsersResponse>
+
+    /** 403s server-side unless [userId] is an actual friend; 400s on your own id. Only call this once [PublicSocialProfile.isFriend] is confirmed true and it isn't a self-view. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/social/compatibility/{userId}")
+    suspend fun getCompatibility(@Path("userId") userId: String): Response<MusicCompatibility>
 }

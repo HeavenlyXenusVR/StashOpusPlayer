@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.stash.opusplayer.bridge.BridgeConfig
 import com.stash.opusplayer.bridge.BridgeTokenStore
+import com.stash.opusplayer.bridge.api.MusicCompatibility
 import com.stash.opusplayer.bridge.api.PostProfileCommentRequest
 import com.stash.opusplayer.bridge.api.ProfileComment
 import com.stash.opusplayer.bridge.api.PublicSocialProfile
@@ -29,9 +30,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 /**
  * Backs [PublicProfileScreen], ported from Lumisound's `ProfileView.swift`/
  * `PublicProfileView.swift`. Covers identity + banner + guestbook +
- * badges/streak + blocking -- bio/accent-color editing, pinned tracks, top
- * genres/artists, and visitor stats are still out of scope (see
- * [PublicSocialProfile]'s doc comment).
+ * badges/streak + blocking + a friends-only Music Match compatibility
+ * score -- bio/accent-color editing, pinned tracks, top genres/artists,
+ * visitor stats, and the "blend mix" companion to compatibility are still
+ * out of scope (see [PublicSocialProfile]'s doc comment).
  *
  * "Self view" (own profile, with banner edit controls, and never a Block
  * User button) is detected by comparing the loaded profile's username
@@ -65,7 +67,10 @@ class PublicProfileViewModel @Inject constructor(
 
         val isBlocking: Boolean = false,
         val showBlockConfirm: Boolean = false,
-        val wasBlocked: Boolean = false
+        val wasBlocked: Boolean = false,
+
+        val compatibility: MusicCompatibility? = null,
+        val isLoadingCompatibility: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -91,6 +96,9 @@ class PublicProfileViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, profile = body) }
                     loadBanner(userId)
                     loadComments(userId)
+                    if (body.isFriend && body.username != currentUsername) {
+                        loadCompatibility(userId)
+                    }
                 } else {
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load this profile (HTTP ${response.code()}).") }
                 }
@@ -189,6 +197,23 @@ class PublicProfileViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoadingComments = false) }
+            }
+        }
+    }
+
+    /** Only called when the loaded profile is a friend and it isn't a self-view -- the server itself 403s/400s otherwise, but there's no point firing a call that can't succeed. */
+    private fun loadCompatibility(userId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingCompatibility = true) }
+            try {
+                val response = socialApi.getCompatibility(userId)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingCompatibility = false, compatibility = response.body()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingCompatibility = false) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingCompatibility = false) }
             }
         }
     }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -120,6 +121,13 @@ fun PublicProfileScreen(
 
                     state.bannerError?.let {
                         Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+
+                    if (profile.isFriend && !viewModel.isSelfProfile()) {
+                        state.compatibility?.let { compat ->
+                            Divider()
+                            MusicMatchCard(compat)
+                        }
                     }
 
                     if (profile.showGuestbook || viewModel.isSelfProfile()) {
@@ -238,6 +246,46 @@ private fun BadgeRow(badges: List<com.stash.opusplayer.bridge.api.ProfileBadge>)
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MusicMatchCard(compatibility: com.stash.opusplayer.bridge.api.MusicCompatibility) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(text = "Music Match", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        if (compatibility.insufficientData) {
+            Text(
+                text = "Not enough listening history yet to compute a match.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(text = "${compatibility.score}%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(text = "match", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(compatibility.score.coerceIn(0, 100) / 100f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
+            if (compatibility.sharedArtists.isNotEmpty()) {
+                Text(text = "Shared Artists: ${compatibility.sharedArtists.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
+            }
+            if (compatibility.sharedGenres.isNotEmpty()) {
+                Text(text = "Shared Genres: ${compatibility.sharedGenres.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
