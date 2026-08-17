@@ -129,12 +129,21 @@ data class AriaDailyPickResponse(
     val reason: String? = null
 )
 
+/** Response of GET /music/liner-notes (main.py). Cached per-album (not per-user), unlike [AriaDailyPickResponse]'s per-user-per-day cache. [blurb] is null when the album isn't recognized/confident enough, not an error. */
+data class LinerNotesResponse(
+    val blurb: String? = null
+)
+
 interface DiscoveryApi {
 
     /** GET /user/aria/daily-pick -- see [AriaDailyPickResponse]'s doc. */
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("user/aria/daily-pick")
     suspend fun getAriaDailyPick(): Response<AriaDailyPickResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("music/liner-notes")
+    suspend fun getLinerNotes(@Query("artist") artist: String, @Query("album") album: String): Response<LinerNotesResponse>
 
     /** Recomputed fresh on every call server-side (a live yt-dlp search seeded by the user's top-3 most-played artists) -- there is no server-side cache to invalidate, unlike [getArtistBio]. Empty array if the user has no play history yet. */
     @Headers("X-Bridge-Auth-Mode: user")

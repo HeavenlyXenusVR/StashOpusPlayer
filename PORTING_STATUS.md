@@ -622,6 +622,36 @@ confirmed by directory/endpoint survey — not touched by this branch:
   `LibraryHubView`, so the card sits above Discovery's tab row instead
   of on a hub.
 
+  **Album liner notes are now ported** too (`GET /music/liner-notes`),
+  second of the 5 `AccountService+Intelligence.swift` endpoints, ported
+  from `fetchLinerNotes` / `AlbumDetailView.swift`'s `AlbumLinerNotesCard`.
+  This app has no dedicated Album Detail screen -- album groupings are
+  routed through the generic `FolderDetailFragment` (also used for real
+  folder browsing), so the card is bolted on there, gated behind a new
+  `isAlbum` flag on `FolderDetailFragment.newInstance()` that's only set
+  `true` from `MainActivity`'s `ACTION_GO_TO_ALBUM` handler -- a plain
+  folder listing has no single artist/album pair to look up notes for.
+  Follows the exact same `EntryPointAccessors` service +
+  fetch-into-`ComposeView` pattern as the existing Artist Bio card
+  (`ArtistBioService`/`ArtistBioCard`/`ArtistSongsFragment`), including
+  reusing the same shared `artistBioComposeView` id, since both fragments
+  already share one XML layout (`fragment_artist_songs.xml`). Silent on
+  failure/not-recognized, matching iOS -- no error state, card just
+  doesn't render.
+
+  AI DJ transition blurbs (`POST /user/ai-dj/transition`) were surveyed
+  and found NOT to be a small chunk despite looking like one on paper:
+  `AIDJService.swift` is a full always-on subsystem (a persistent mode
+  toggle, on-device TTS speaking a blurb between every track, volume
+  ducking synced to the player, stale-blurb guards against mid-speech
+  skips) with zero existing Android counterpart to hook into -- porting
+  it means building a new feature surface from scratch (Android
+  `TextToSpeech`, player volume-ducking plumbing, a Now Playing
+  "speaking" caption), not just wiring up an endpoint. Deferred alongside
+  the two remaining Intelligence endpoints wired into existing complex
+  flows (metadata-resolve into file-matching, duplicate-resolve +
+  feedback into the duplicate finder).
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

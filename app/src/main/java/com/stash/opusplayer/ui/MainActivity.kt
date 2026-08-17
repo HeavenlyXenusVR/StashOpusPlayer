@@ -628,7 +628,7 @@ Check for updates anytime from Settings.""")
                 val repo = com.stash.opusplayer.data.MusicRepository(this)
                 lifecycleScope.launch {
                     val songs = repo.getSongsInAlbum(album)
-                    val fragment = com.stash.opusplayer.ui.fragments.FolderDetailFragment.newInstance(album, ArrayList(songs))
+                    val fragment = com.stash.opusplayer.ui.fragments.FolderDetailFragment.newInstance(album, ArrayList(songs), isAlbum = true)
                     loadFragment(fragment)
                 }
             }
