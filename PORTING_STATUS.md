@@ -164,9 +164,26 @@ confirmed by directory/endpoint survey — not touched by this branch:
   as on iOS) with a client-side JPEG-recompress step for non-GIF images,
   matching Lumisound's own client-side handling; animated GIF avatars show
   only their first frame (no Coil/GIF-playback dependency in this project
-  to render the rest). Still unbuilt: folder backup, cross-device sync,
-  subscriptions/feed, Discord RPC/webhook, push notifications, weekly
-  mix. `StreamingBrowseScreen` is also now reachable
+  to render the rest).
+
+  **Discord "Now Playing" webhook is now ported** too (`Settings ->
+  Discord Webhook`, `GET/PUT/DELETE /user/discord-webhook`) -- paste an
+  incoming-webhook URL, toggle enabled, remove. Entirely server-side and
+  fire-and-forget from `POST /user/history` (the same trigger
+  `PlayHistoryLogger` already calls for scrobbling), so linking a webhook
+  needed zero new client-side triggering logic. Distinct from Discord
+  Rich Presence, which needs a local desktop IPC daemon (`discord-rpc/
+  install.sh` on iOS) and has **no Android equivalent** -- ruled out of
+  this port entirely, not just deferred. Discord account verification
+  (OAuth2 "Discord Verified" badge) is also still unbuilt, separate from
+  both of the above.
+
+  Still unbuilt: folder backup, cross-device sync, subscriptions/feed,
+  push notifications, weekly mix (blocked on an entirely separate
+  "personal cloud music library" API family -- `/user/music/search|
+  upload|stream|artwork|metadata|recommendations|smart-playlists` --
+  that this app doesn't model at all yet; discovered while scoping
+  weekly mix, bigger than a one-off addition). `StreamingBrowseScreen` is also now reachable
   (`Settings -> Browse & Stream`) but its underlying `StreamingApi` coverage
   wasn't audited as part of this pass.
 

@@ -18,6 +18,7 @@ import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
 import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.CloudPlaylistsFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscordWebhookFragment
 import com.stash.opusplayer.ui.fragments.settings.DiscoveryFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
 import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
@@ -179,6 +180,14 @@ class SettingsFragment : Fragment() {
             summary = "Sign in with the same account you use on Lumisound -- both apps talk to the same server."
         ) {
             openSettingsScreen(BridgeAccountFragment(), "Account & Server")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discord Webhook",
+            summary = "Post a \"Now Playing\" message to a Discord channel whenever you start a track."
+        ) {
+            openSettingsScreen(DiscordWebhookFragment(), "Discord Webhook")
         }
 
         addSettingsTile(
