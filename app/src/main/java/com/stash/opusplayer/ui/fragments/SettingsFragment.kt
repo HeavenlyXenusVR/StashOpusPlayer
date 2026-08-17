@@ -14,6 +14,7 @@ import com.stash.opusplayer.R
 import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
+import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
 import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
 import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
 import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
@@ -175,6 +176,14 @@ class SettingsFragment : Fragment() {
             summary = "Sign in with the same account you use on Lumisound -- both apps talk to the same server."
         ) {
             openSettingsScreen(BridgeAccountFragment(), "Account & Server")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Achievements",
+            summary = "Badges, streaks, and listening stats -- shared with Lumisound."
+        ) {
+            openSettingsScreen(AchievementsFragment(), "Achievements")
         }
 
         addSettingsTile(

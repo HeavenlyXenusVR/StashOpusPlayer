@@ -94,6 +94,22 @@ confirmed by directory/endpoint survey — not touched by this branch:
   serves, but leaderboards, compatibility, activity feed, collaborative
   playlists, Listen Together (SharePlay has no Android equivalent to map to
   anyway), and profile comments/banners are still unbuilt.
+- **Play History + Achievements are now ported.** `PlayHistoryLogger`
+  posts to `/user/history` ~5 seconds after a track starts (cancelled/
+  rescheduled on every track change, matching Lumisound's own accidental-
+  skip filter exactly), wired into all three places `MusicPlayerManager`
+  can start a new track (`updateCurrentSong`, `playQueue`, `playFromPlaylist`).
+  This single piece of plumbing was a shared prerequisite for two features
+  at once: it's also what `Settings -> Achievements` (`GET /user/achievements`,
+  badges/streaks/stats computed live server-side from that same history,
+  no separate achievements table) needed to show anything other than
+  zeros. Scrobbling (Last.fm/Libre.fm/ListenBrainz) was surveyed as the
+  next natural feature to build on this same prerequisite but wasn't
+  picked up in this pass -- it needs its own external-browser link flow
+  (Last.fm's `auth.gettoken`/`auth.getsession` web flow, fully proxied
+  through the bridge already, no bridge changes needed) and is scoped as
+  a separate chunk.
+
 - **Cloud/account services**: **Account/Auth is now done, including full
   account management** -- sign in/register/logout, 2FA-login continuation,
   display-name editing, **session list/revoke, change password, delete

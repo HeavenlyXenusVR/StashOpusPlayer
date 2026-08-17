@@ -9,6 +9,7 @@ import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /** One track row inside a playlist (main.py `get_playlists`/`get_playlist` ~L4838/5011). */
 data class BridgePlaylistTrack(
@@ -123,9 +124,52 @@ data class RestoreBackupResponse(
 )
 
 /**
- * Playlists + favorites — the "basic sync" subset covered in this pass. Both
- * require the user's JWT (`get_current_user`), tagged
- * `X-Bridge-Auth-Mode: user`.
+ * Body for POST /user/history (`LogPlayRequest`, main.py ~L1920). Only
+ * [title] is required server-side; everything else is optional and
+ * unvalidated. [localSongId] is a purely opaque, client-local identifier
+ * (Lumisound uses its own `sourceTrackID`; Stash has no equivalent concept
+ * on [com.stash.opusplayer.data.Song], and none is needed here -- the
+ * server never checks it against anything) -- the local MediaStore song id
+ * as a string is a fine value for it. This is a plain INSERT server-side,
+ * no dedupe/rate-limit -- callers are responsible for only calling this
+ * once per genuine listen (see the 5-second-after-track-start debounce in
+ * `MusicPlayerManager`), not on every possible trigger.
+ */
+data class LogHistoryRequest(
+    val title: String,
+    val artist: String? = null,
+    @SerializedName("track_url") val trackUrl: String? = null,
+    @SerializedName("local_song_id") val localSongId: String? = null,
+    @SerializedName("listen_seconds") val listenSeconds: Int? = 0,
+    val bpm: Double? = null
+)
+
+/** Response of POST /user/history (201): `{"id": "<uuid>", "status": "logged"}`. */
+data class LogHistoryResponse(
+    val id: String,
+    val status: String
+)
+
+/**
+ * Response of GET /user/achievements -- computed live from play history on
+ * every call (main.py ~L13743), no separate achievements table server-side.
+ * [badges] are simple string tags (`plays_10`, `hours_1`, `streak_7`,
+ * `night_owl`, etc.) -- deliberately not modeled as a closed enum here
+ * since the server can add new badge ids without a client update breaking
+ * anything; unrecognized ids should just render with a generic fallback.
+ */
+data class AchievementsResponse(
+    @SerializedName("total_plays") val totalPlays: Int = 0,
+    @SerializedName("total_listen_seconds") val totalListenSeconds: Int = 0,
+    @SerializedName("current_streak_days") val currentStreakDays: Int = 0,
+    @SerializedName("longest_streak_days") val longestStreakDays: Int = 0,
+    val badges: List<String> = emptyList()
+)
+
+/**
+ * Playlists + favorites + backups + history/achievements -- the "basic
+ * sync" subset covered in this pass. All require the user's JWT
+ * (`get_current_user`), tagged `X-Bridge-Auth-Mode: user`.
  *
  * GET/POST `/user/sync` (the iOS app's full cross-device settings sync) is
  * deliberately NOT modeled here: its push body (`SyncPushRequest`, main.py
@@ -138,8 +182,12 @@ data class RestoreBackupResponse(
  * iOS request shape. Backups (`/user/backups*`) ARE modeled below, since
  * they only ever expose the favorites/playlists subset (never the
  * iOS-settings blob) — see [BridgeBackupSummary]/[RestoreBackupResponse].
+ * `/user/history` and `/user/achievements` ARE modeled below too --
+ * neither reads or writes the `/user/sync` blob at all (achievements are
+ * computed live from `ios_play_history`, confirmed against main.py
+ * directly), so they carry none of that scoping risk.
  * Still not modeled: `/user/library/inventory`, `/user/folder-backups`,
- * `/user/stats`, `/user/history`, `/user/settings`.
+ * `/user/stats`, `/user/settings`.
  */
 interface SyncApi {
 
@@ -191,4 +239,13 @@ interface SyncApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @POST("user/backups/{backupId}/restore")
     suspend fun restoreBackup(@Path("backupId") backupId: Long): Response<RestoreBackupResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/history")
+    suspend fun logHistory(@Body body: LogHistoryRequest): Response<LogHistoryResponse>
+
+    /** [tzOffsetMinutes]: the device's current UTC offset in minutes (e.g. -240 for EDT) -- shifts streak/day-part badge grouping to the user's local calendar day server-side. Omitting it (or passing 0) groups by UTC day instead. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/achievements")
+    suspend fun getAchievements(@Query("tz_offset_minutes") tzOffsetMinutes: Int = 0): Response<AchievementsResponse>
 }
