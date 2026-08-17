@@ -113,7 +113,28 @@ data class SimilarListenersResponse(
  * two-step flow every other bridge-track list in this app already uses --
  * neither endpoint embeds a directly-playable stream URL.
  */
+/**
+ * Response of GET /user/aria/daily-pick (main.py ~L12470). [pick] is one
+ * entry from that day's [DiscoveryApi.getDiscoverMix] candidate pool
+ * (Gemini picks an index, never invents a track), so it's the same
+ * bridge-streamable, not-yet-resolved [BridgeTrack] shape -- resolve it
+ * through [com.stash.opusplayer.bridge.BridgeStreamResolver] exactly like
+ * any other Discover Mix row before playing. Cached server-side per user
+ * per UTC day, so repeat calls the same day are free. Both fields null
+ * (not an error) when the user has no play history yet to seed a pick
+ * from.
+ */
+data class AriaDailyPickResponse(
+    val pick: BridgeTrack? = null,
+    val reason: String? = null
+)
+
 interface DiscoveryApi {
+
+    /** GET /user/aria/daily-pick -- see [AriaDailyPickResponse]'s doc. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/aria/daily-pick")
+    suspend fun getAriaDailyPick(): Response<AriaDailyPickResponse>
 
     /** Recomputed fresh on every call server-side (a live yt-dlp search seeded by the user's top-3 most-played artists) -- there is no server-side cache to invalidate, unlike [getArtistBio]. Empty array if the user has no play history yet. */
     @Headers("X-Bridge-Auth-Mode: user")

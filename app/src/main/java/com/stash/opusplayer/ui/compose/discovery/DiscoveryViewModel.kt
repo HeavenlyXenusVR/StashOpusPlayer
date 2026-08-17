@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.stash.opusplayer.StashOpusApplication
 import com.stash.opusplayer.bridge.BridgeStreamResolver
 import com.stash.opusplayer.bridge.PlaybackRequest
+import com.stash.opusplayer.bridge.api.AriaDailyPickResponse
 import com.stash.opusplayer.bridge.api.BridgeTrack
 import com.stash.opusplayer.bridge.api.DiscoveryApi
 import com.stash.opusplayer.bridge.api.GlobalActivityEntry
@@ -78,6 +79,9 @@ class DiscoveryViewModel @Inject constructor(
         val similarListenersReason: String? = null,
         val similarListenersError: String? = null,
 
+        val isLoadingDailyPick: Boolean = true,
+        val dailyPick: AriaDailyPickResponse? = null,
+
         val resolvingTrackId: String? = null,
         /** Keyed by "title|artist" -- title/artist rows (Trending/Similar Listeners) have no id to key on, unlike [BridgeTrack.id]. */
         val resolvingTitleArtistKey: String? = null,
@@ -93,6 +97,7 @@ class DiscoveryViewModel @Inject constructor(
         loadTrending()
         loadCommunityActivity()
         loadSimilarListeners()
+        loadDailyPick()
     }
 
     fun onTabSelected(tab: DiscoveryTab) {
@@ -240,6 +245,26 @@ class DiscoveryViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(resolvingTitleArtistKey = null, playbackError = "Couldn't find a playable match for \"$title\".") }
+            }
+        }
+    }
+
+    /**
+     * Ported from `AccountService+Intelligence.swift`'s `fetchAriaDailyPick`.
+     * Silent on failure/no-history, matching iOS -- there's no dedicated
+     * error state, [UiState.dailyPick] just stays null and the card simply
+     * doesn't render, same as `LibraryHubView`'s `ariaDailyPick?.track != nil`
+     * visibility gate.
+     */
+    fun loadDailyPick() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingDailyPick = true) }
+            try {
+                val response = discoveryApi.getAriaDailyPick()
+                val body = if (response.isSuccessful) response.body() else null
+                _uiState.update { it.copy(isLoadingDailyPick = false, dailyPick = body) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingDailyPick = false) }
             }
         }
     }

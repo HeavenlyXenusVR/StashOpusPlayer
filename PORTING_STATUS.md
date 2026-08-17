@@ -602,6 +602,26 @@ confirmed by directory/endpoint survey — not touched by this branch:
   `MusicPlayerManager` and `NowPlayingActivity` are plain, non-Hilt
   classes.
 
+  **Aria's Daily Pick is now ported** too (`Settings -> Discover`, a
+  card above the tab row), ported from `AccountService+Intelligence.swift`'s
+  `fetchAriaDailyPick` / `LibraryHubView.swift`'s `HubAriaDailyPickCard`.
+  First of the 5 `AccountService+Intelligence.swift` AI-assist endpoints
+  to be ported -- the other 4 (metadata-resolve, duplicate-resolve +
+  feedback, AI DJ transition blurbs, album liner notes) are each
+  independently small but weren't picked up this pass; deliberately
+  started with Daily Pick since it's the only one that's a standalone
+  card rather than being wired into an existing complex flow (duplicate
+  finder, library scan, AI DJ). `GET /user/aria/daily-pick` returns an
+  index picked by Gemini from that day's Discover Mix candidate pool
+  (never an invented track) plus a one-sentence reason, cached
+  server-side per user per UTC day; resolved and played through the
+  exact same `BridgeStreamResolver` + `playTrack()` path Discover Mix
+  already uses, since it's the same `BridgeTrack` shape. Silent on
+  failure/no-history, matching iOS -- no error state, the card just
+  doesn't render. This app has no home/dashboard screen equivalent to
+  `LibraryHubView`, so the card sits above Discovery's tab row instead
+  of on a hub.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

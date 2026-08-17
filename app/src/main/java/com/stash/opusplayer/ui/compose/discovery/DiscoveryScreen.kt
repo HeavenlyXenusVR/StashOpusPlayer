@@ -36,6 +36,16 @@ fun DiscoveryScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize()) {
+        state.dailyPick?.pick?.let { track ->
+            DailyPickCard(
+                track = track,
+                reason = state.dailyPick?.reason,
+                isResolving = state.resolvingTrackId == track.id,
+                onClick = { viewModel.playTrack(track) },
+                modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 0.dp)
+            )
+        }
+
         ScrollableTabRow(selectedTabIndex = state.selectedTab.ordinal) {
             Tab(
                 selected = state.selectedTab == DiscoveryTab.DISCOVER_MIX,
@@ -181,6 +191,43 @@ private fun OnThisDayContent(
                     )
                 }
                 Divider()
+            }
+        }
+    }
+}
+
+/**
+ * Ported from `LibraryHubView.swift`'s `HubAriaDailyPickCard` -- a single
+ * compact card (not a carousel), only shown when the bridge actually
+ * returned a pick (no play history yet = no card, matching iOS's
+ * `ariaDailyPick?.track != nil` gate). Sits above the tab row rather than
+ * as a home-hub card, since this app has no home/dashboard screen
+ * equivalent to `LibraryHubView`.
+ */
+@Composable
+private fun DailyPickCard(track: BridgeTrack, reason: String?, isResolving: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(modifier = modifier.fillMaxWidth().clickable(enabled = !isResolving, onClick = onClick)) {
+        Row(
+            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(text = "Aria's Daily Pick", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(text = track.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(text = track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                reason?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+            if (isResolving) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             }
         }
     }
