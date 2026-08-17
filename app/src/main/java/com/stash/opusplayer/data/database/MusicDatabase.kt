@@ -10,8 +10,8 @@ import com.stash.opusplayer.data.MetadataInfo
 import com.stash.opusplayer.data.MetadataDao
 
 @Database(
-    entities = [FavoriteEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, MetadataInfo::class, SongEntity::class, SmartPlaylistEntity::class, RecentlyDeletedEntity::class, CorruptFileEntity::class],
-    version = 6,
+    entities = [FavoriteEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, MetadataInfo::class, SongEntity::class, SmartPlaylistEntity::class, RecentlyDeletedEntity::class, CorruptFileEntity::class, BpmCacheEntity::class],
+    version = 7,
     exportSchema = false
 )
 abstract class MusicDatabase : RoomDatabase() {
@@ -23,6 +23,7 @@ abstract class MusicDatabase : RoomDatabase() {
     abstract fun smartPlaylistDao(): SmartPlaylistDao
     abstract fun recentlyDeletedDao(): RecentlyDeletedDao
     abstract fun corruptFileDao(): CorruptFileDao
+    abstract fun bpmCacheDao(): BpmCacheDao
 
     companion object {
         @Volatile
@@ -120,13 +121,32 @@ abstract class MusicDatabase : RoomDatabase() {
             }
         }
 
+        // Adds the "bpm_cache" table -- see BpmAnalyzer/BpmCacheEntity. Brand
+        // new table, no data transformation needed, same shape as the prior
+        // migrations.
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `bpm_cache` (
+                        `songId` INTEGER NOT NULL,
+                        `bpm` REAL NOT NULL,
+                        `sizeBytes` INTEGER NOT NULL,
+                        `analyzedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`songId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): MusicDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     MusicDatabase::class.java,
                     "music_database"
-                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                  .fallbackToDestructiveMigration()
                  .build()
                 INSTANCE = instance

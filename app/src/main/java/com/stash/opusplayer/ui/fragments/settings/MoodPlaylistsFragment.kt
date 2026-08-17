@@ -56,7 +56,8 @@ class MoodPlaylistsFragment : NavigableSettingsFragment() {
     private fun analyze() {
         viewLifecycleOwner.lifecycleScope.launch {
             val songs = repository.getAllSongs()
-            buckets = songs.groupBy { MoodClassifier.classify(it) }
+            val bpmBySongId = com.stash.opusplayer.tempo.BpmCacheService.cachedBpmBySongId(requireContext())
+            buckets = songs.groupBy { MoodClassifier.classify(it, cachedBpm = bpmBySongId[it.id]) }
             renderBuckets()
         }
     }

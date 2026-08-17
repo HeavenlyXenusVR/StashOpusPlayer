@@ -32,6 +32,9 @@ class StashOpusApplication : Application() {
             com.stash.opusplayer.work.MetadataTagRefreshWorker.schedulePeriodic(this)
         } catch (_: Exception) {}
         try {
+            com.stash.opusplayer.work.BpmAnalysisWorker.schedulePeriodic(this)
+        } catch (_: Exception) {}
+        try {
             val db = com.stash.opusplayer.data.database.MusicDatabase.getDatabase(this)
             GlobalScope.launch(Dispatchers.IO) {
                 com.stash.opusplayer.library.RecentlyDeletedService.purgeExpired(this@StashOpusApplication, db.recentlyDeletedDao())

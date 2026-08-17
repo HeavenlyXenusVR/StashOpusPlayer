@@ -14,16 +14,20 @@ enum class MoodBucket(val displayName: String) {
 /**
  * Classifies a song into a [MoodBucket], ported from Lumisound's
  * MoodPlaylistService.classify(song:library:) (ios/Lumisound/Sources/Services/MoodPlaylistService.swift).
- * The Swift original tries a BPM tag/analyzer first; Stash has no BPM field
- * on [Song] and no audio-analysis pipeline to add one from, so that tier is
- * dropped entirely rather than faked -- every remaining tier (genre
- * keywords, title/artist keywords, duration heuristic, deterministic
- * fallback) carries over exactly, in the same priority order, so every song
- * still always lands in some bucket.
+ * BPM is now wired in as the first-priority tier (via [com.stash.opusplayer.tempo.BpmCacheService],
+ * added once a real on-device analyzer existed) -- matching the Swift
+ * original's true priority order exactly: BPM bucket, then genre keywords,
+ * then title/artist keywords, then duration heuristic, then deterministic
+ * fallback, so every song still always lands in some bucket.
  */
 object MoodClassifier {
 
-    fun classify(song: Song): MoodBucket {
+    /** [cachedBpm] is a cache-only lookup ([com.stash.opusplayer.tempo.BpmCacheService.cachedBpm]) supplied by the caller so classification itself stays synchronous and never triggers a fresh decode+analyze. */
+    fun classify(song: Song, cachedBpm: Double? = null): MoodBucket {
+        if (cachedBpm != null) {
+            bucketForBpm(cachedBpm)?.let { return it }
+        }
+
         val genre = song.genre.lowercase()
         if (genre.isNotBlank()) {
             matchByKeywords(genre)?.let { return it }
@@ -40,6 +44,16 @@ object MoodClassifier {
 
         val buckets = MoodBucket.entries
         return buckets[abs(song.id.hashCode()) % buckets.size]
+    }
+
+    /** Bucketing thresholds ported verbatim from the Swift original: `<60 sleep, 60..<90 chill, 90..<120 focus, >=120 energetic`. */
+    private fun bucketForBpm(bpm: Double): MoodBucket? {
+        return when {
+            bpm < 60.0 -> MoodBucket.SLEEP
+            bpm < 90.0 -> MoodBucket.CHILL
+            bpm < 120.0 -> MoodBucket.FOCUS
+            else -> MoodBucket.ENERGETIC
+        }
     }
 
     private fun matchByKeywords(text: String): MoodBucket? {

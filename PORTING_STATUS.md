@@ -110,9 +110,21 @@ confirmed by directory/endpoint survey — not touched by this branch:
 - **Watch/widgets/system integration**: `PhoneWatchSync`, `WidgetDataView`,
   Live Activities, Siri App Intents (`LumisoundAppIntents`), Focus Filter.
   No Android Wear or widget work has started.
-- **Audio-adjacent services**: AcoustID fingerprint identification, BPM
-  analyzer, harmonic mixing, spatial audio, clip maker, GIF search, M3U
-  import, mood playlists. None ported.
+- **Audio-adjacent services**: **BPM analyzer, mood playlists, and M3U
+  import are now ported.** BPM: `com.stash.opusplayer.tempo.BpmAnalyzer`
+  ports the Swift original's autocorrelation-on-onset-envelope algorithm
+  verbatim; Android has no `AVAssetReader`-equivalent resample-on-decode,
+  so `MediaExtractor`+`MediaCodec` decode at native rate then a
+  block-averaging downsample substitutes for it (see that file's doc
+  comment). Cached in a new `bpm_cache` table (self-invalidates on file
+  size change), filled gradually by a new periodic `BpmAnalysisWorker` or
+  on-demand via `Settings -> Tempo (BPM)`. Wired into `MoodClassifier` as
+  the first-priority tier, matching Lumisound's real priority order (BPM
+  before genre keywords). Sort-by-BPM, BPM-proximity shuffle, and
+  beat-matched crossfade (all real consumers in the Swift original) are
+  NOT ported yet -- the analyzer/cache exists, nothing downstream uses it
+  besides mood classification. Still unported: AcoustID fingerprint
+  identification, harmonic mixing, spatial audio, clip maker, GIF search.
 - **Library maintenance**: corrupt-file finder, recently-deleted recovery,
   periodic metadata refresh. Stash has its own separate duplicate-finder
   path (`DuplicateFinderService.kt`, pre-existing) but nothing matching
