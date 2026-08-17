@@ -22,9 +22,11 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -37,9 +39,23 @@ import com.stash.opusplayer.bridge.api.PodcastSubscription
 @Composable
 fun PodcastsScreen(
     modifier: Modifier = Modifier,
-    viewModel: PodcastsViewModel = hiltViewModel()
+    viewModel: PodcastsViewModel = hiltViewModel(),
+    onImportOpmlClick: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(state.opmlShareUri) {
+        val uriString = state.opmlShareUri ?: return@LaunchedEffect
+        val uri = android.net.Uri.parse(uriString)
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/x-opml+xml"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share Podcast Subscriptions"))
+        viewModel.consumeOpmlShareUri()
+    }
 
     if (state.selectedFeedUrl != null) {
         EpisodesContent(state = state, viewModel = viewModel, modifier = modifier)
@@ -58,7 +74,7 @@ fun PodcastsScreen(
                 )
             }
             when (state.selectedTab) {
-                PodcastsTab.SUBSCRIPTIONS -> SubscriptionsContent(state = state, viewModel = viewModel)
+                PodcastsTab.SUBSCRIPTIONS -> SubscriptionsContent(state = state, viewModel = viewModel, onImportOpmlClick = onImportOpmlClick)
                 PodcastsTab.DISCOVER -> DiscoverContent(state = state, viewModel = viewModel)
             }
         }
@@ -69,6 +85,7 @@ fun PodcastsScreen(
 private fun SubscriptionsContent(
     state: PodcastsViewModel.UiState,
     viewModel: PodcastsViewModel,
+    onImportOpmlClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -106,6 +123,32 @@ private fun SubscriptionsContent(
                     Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = viewModel::exportOpml, enabled = !state.isExportingOpml && state.subscriptions.isNotEmpty()) {
+                if (state.isExportingOpml) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Export OPML")
+                }
+            }
+            TextButton(onClick = onImportOpmlClick, enabled = !state.isImportingOpml) {
+                if (state.isImportingOpml) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Import OPML")
+                }
+            }
+        }
+        state.exportOpmlError?.let {
+            Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        state.importOpmlError?.let {
+            Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        state.importOpmlResultMessage?.let {
+            Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
 
         when {

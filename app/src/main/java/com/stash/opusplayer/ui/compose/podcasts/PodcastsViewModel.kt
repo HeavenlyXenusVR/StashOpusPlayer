@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.stash.opusplayer.StashOpusApplication
+import com.stash.opusplayer.bridge.api.ImportOpmlRequest
 import com.stash.opusplayer.bridge.api.PodcastChapter
 import com.stash.opusplayer.bridge.api.PodcastEpisode
 import com.stash.opusplayer.bridge.api.PodcastEpisodeProgress
@@ -16,7 +17,9 @@ import com.stash.opusplayer.bridge.api.UpdatePodcastSubscriptionRequest
 import com.stash.opusplayer.data.Song
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,14 +27,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Backs `Settings -> Podcasts`. Covers subscribe/list/mute/unsubscribe +
- * episode browsing + direct playback + playback-progress sync + search/
- * trending discovery -- chapters and OPML import/export are still real
- * bridge features not modeled in this pass (see [PodcastsApi]'s class
- * doc). List/detail (subscriptions vs. one feed's episodes) is one
- * Compose island with internal state, same pattern as
+ * Backs `Settings -> Podcasts`. Covers the complete podcast feature set --
+ * subscribe/list/mute/unsubscribe, episode browsing + direct playback,
+ * playback-progress sync, chapters, search/trending discovery, and OPML
+ * import/export (see [PodcastsApi]'s class doc). List/detail
+ * (subscriptions vs. one feed's episodes) is one Compose island with
+ * internal state, same pattern as
  * [com.stash.opusplayer.ui.compose.playlists.CloudPlaylistsViewModel].
  *
  * Episode playback needs no bridge resolve step at all -- [PodcastEpisode.audioUrl]
@@ -95,7 +99,16 @@ class PodcastsViewModel @Inject constructor(
         val chaptersEpisodeGuid: String? = null,
         val isLoadingChapters: Boolean = false,
         val chapters: List<PodcastChapter> = emptyList(),
-        val chaptersError: String? = null
+        val chaptersError: String? = null,
+
+        val isExportingOpml: Boolean = false,
+        val exportOpmlError: String? = null,
+        /** Set once an OPML export file is ready to share -- the Composable observes this, launches the share sheet, then calls [consumeOpmlShareUri]. A raw `content://` URI string rather than a typed `Uri` so [UiState] stays free of Android UI-layer types. */
+        val opmlShareUri: String? = null,
+
+        val isImportingOpml: Boolean = false,
+        val importOpmlError: String? = null,
+        val importOpmlResultMessage: String? = null
     )
 
     private var progressPushJob: Job? = null
@@ -364,6 +377,69 @@ class PodcastsViewModel @Inject constructor(
             runCatching { podcastsApi.subscribe(PodcastSubscribeRequest(feedUrl)) }
             _uiState.update { it.copy(subscribingFeedUrls = it.subscribingFeedUrls - feedUrl) }
             loadSubscriptions()
+        }
+    }
+
+    // --- OPML import/export ---------------------------------------------------
+
+    /**
+     * Fetches the raw OPML document, writes it to a cache file, and exposes
+     * a shareable `content://` URI via [UiState.opmlShareUri] -- the actual
+     * `startActivity` share-sheet launch happens in the Composable (via
+     * `LocalContext`), matching how [com.stash.opusplayer.ui.compose.scrobble.ScrobblingScreen]
+     * already handles opening an external URL, rather than this ViewModel
+     * reaching for a Context to launch UI with directly.
+     */
+    fun exportOpml() {
+        if (_uiState.value.isExportingOpml) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isExportingOpml = true, exportOpmlError = null) }
+            try {
+                val response = podcastsApi.exportOpml()
+                val body = response.body()
+                if (response.isSuccessful && body != null) {
+                    val uri = withContext(Dispatchers.IO) {
+                        val outDir = File(appContext.cacheDir, "share").apply { mkdirs() }
+                        val outFile = File(outDir, "podcast_subscriptions.opml")
+                        outFile.writeText(body.string())
+                        androidx.core.content.FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", outFile)
+                    }
+                    _uiState.update { it.copy(isExportingOpml = false, opmlShareUri = uri.toString()) }
+                } else {
+                    _uiState.update { it.copy(isExportingOpml = false, exportOpmlError = "Couldn't export subscriptions (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isExportingOpml = false, exportOpmlError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    fun consumeOpmlShareUri() {
+        _uiState.update { it.copy(opmlShareUri = null) }
+    }
+
+    /** [opmlText] is the raw file content read by the Composable/Fragment's document picker -- this ViewModel has no file-picking UI of its own, matching how [com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment]'s folder picker works the same way (Fragment-level `ActivityResultLauncher`, ViewModel/repository only sees the result). */
+    fun importOpml(opmlText: String) {
+        if (_uiState.value.isImportingOpml) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImportingOpml = true, importOpmlError = null, importOpmlResultMessage = null) }
+            try {
+                val response = podcastsApi.importOpml(ImportOpmlRequest(opmlText))
+                val result = response.body()
+                if (response.isSuccessful && result != null) {
+                    _uiState.update {
+                        it.copy(
+                            isImportingOpml = false,
+                            importOpmlResultMessage = "Added ${result.added} of ${result.total} podcast${if (result.total == 1) "" else "s"}."
+                        )
+                    }
+                    loadSubscriptions()
+                } else {
+                    _uiState.update { it.copy(isImportingOpml = false, importOpmlError = "Couldn't import that file (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isImportingOpml = false, importOpmlError = "Couldn't read that file as OPML.") }
+            }
         }
     }
 }

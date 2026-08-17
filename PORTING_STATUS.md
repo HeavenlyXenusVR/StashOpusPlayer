@@ -325,8 +325,24 @@ confirmed by directory/endpoint survey — not touched by this branch:
   tapping a chapter plays the episode from that timestamp, deliberately
   ignoring any saved resume position (jumping to a chapter mark is an
   explicit choice, not a continuation), matching Lumisound's own
-  `PodcastChaptersSheet.playFrom` exactly. This closes out the podcast
-  feature set except OPML import/export.
+  `PodcastChaptersSheet.playFrom` exactly.
+
+  **OPML import/export were added in a follow-up pass** too (`GET
+  /user/podcasts/export-opml`, `POST /user/podcasts/import-opml`),
+  closing out the full podcast feature set. Export fetches the raw
+  OPML document and shares it via the standard Android share sheet
+  (a `content://` URI through the app's existing `FileProvider`, same
+  mechanism already used for clip sharing). Import uses a document
+  picker (`ACTION_OPEN_DOCUMENT`, any file type -- OPML has no
+  standard registered MIME type) to read a file's text and hand it to
+  the bridge, which bulk-subscribes to every feed URL found and
+  reports how many were added/failed. Notably, `GET /user/podcasts/
+  export-opml` returns raw XML text rather than JSON -- modeled with
+  Retrofit's `ResponseBody` return type (which bypasses the shared
+  Gson converter) rather than a manual `HttpURLConnection` the way the
+  avatar/banner raw-bytes GETs elsewhere in this app do, since
+  `ResponseBody` still goes through the normal OkHttp client and its
+  auth interceptor automatically.
 
   Still unbuilt: cross-device sync, push notifications, weekly mix
   (blocked on an entirely separate "personal cloud music library" API

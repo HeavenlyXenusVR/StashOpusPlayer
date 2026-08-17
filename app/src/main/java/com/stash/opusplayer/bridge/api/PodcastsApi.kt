@@ -1,6 +1,7 @@
 package com.stash.opusplayer.bridge.api
 
 import com.google.gson.annotations.SerializedName
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -11,6 +12,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 /** Body for POST /user/podcasts/subscriptions -- [feedUrl] is validated by actually fetching it server-side (catches typos/dead feeds at add-time), so this call can be slow-ish and can fail with a descriptive 400. */
 data class PodcastSubscribeRequest(
@@ -78,6 +80,18 @@ data class PodcastEpisodeProgress(
     @SerializedName("updated_at") val updatedAt: String? = null
 )
 
+/** Body for POST /user/podcasts/import-opml (`ImportOPMLRequest`, main.py ~L17666) -- the raw OPML document as a string, not a file upload. Server bulk-subscribes to every `<outline xmlUrl="...">` found (capped at 100), reusing the same per-feed validation/dedup as a normal single subscribe. */
+data class ImportOpmlRequest(
+    val opml: String
+)
+
+/** Response of POST /user/podcasts/import-opml: `{"added": int, "failed": int, "total": int}` -- [total] is how many feed URLs were found in the document, which can exceed `added + failed` if it had more than 100 (server caps processing at 100). */
+data class ImportOpmlResponse(
+    val added: Int = 0,
+    val failed: Int = 0,
+    val total: Int = 0
+)
+
 /**
  * One chapter of a "Podcasting 2.0" chapters JSON file (main.py
  * ~L17528-17532, `_fetch_podcast_chapters_sync`). [startTimeSeconds] is a
@@ -108,14 +122,13 @@ data class PodcastSearchResult(
 )
 
 /**
- * Podcast subscriptions + episode listing + playback-progress sync +
- * chapters + search/trending discovery, ported from the podcast slice of
- * Lumisound's account services (a full podcast subsystem also including
- * OPML import/export -- not modeled here). Distinct from -- and unrelated
- * to -- artist channel subscriptions ([SubscriptionsApi]): this is
- * RSS-feed-based, not YouTube-channel-based, and episodes play from a
- * direct enclosure URL with no yt-dlp/bridge-stream-resolve step
- * at all.
+ * The complete podcast feature set: subscriptions + episode listing +
+ * playback-progress sync + chapters + search/trending discovery + OPML
+ * import/export, ported from the podcast slice of Lumisound's account
+ * services. Distinct from -- and unrelated to -- artist channel
+ * subscriptions ([SubscriptionsApi]): this is RSS-feed-based, not
+ * YouTube-channel-based, and episodes play from a direct enclosure URL
+ * with no yt-dlp/bridge-stream-resolve step at all.
  */
 interface PodcastsApi {
 
@@ -175,4 +188,25 @@ interface PodcastsApi {
     @Headers("X-Bridge-Auth-Mode: user")
     @GET("podcasts/trending")
     suspend fun getTrendingPodcasts(@Query("limit") limit: Int = 20): Response<List<PodcastSearchResult>>
+
+    /**
+     * Raw OPML XML text (`Content-Type: text/x-opml+xml`), not JSON --
+     * [ResponseBody] deliberately bypasses this Retrofit instance's Gson
+     * converter (which would otherwise fail trying to parse XML as JSON).
+     * Unlike the avatar/banner raw-bytes GETs elsewhere in this app (which
+     * use a plain `HttpURLConnection` to sidestep the same problem), this
+     * goes through Retrofit normally -- `ResponseBody` is one of the types
+     * Retrofit always handles specially regardless of the configured
+     * converter, so the shared OkHttp client's `BridgeAuthInterceptor`
+     * (auth header, base-URL rewriting) still applies automatically here,
+     * which the manual-HttpURLConnection approach has to duplicate by hand.
+     */
+    @Streaming
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/podcasts/export-opml")
+    suspend fun exportOpml(): Response<ResponseBody>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @POST("user/podcasts/import-opml")
+    suspend fun importOpml(@Body body: ImportOpmlRequest): Response<ImportOpmlResponse>
 }
