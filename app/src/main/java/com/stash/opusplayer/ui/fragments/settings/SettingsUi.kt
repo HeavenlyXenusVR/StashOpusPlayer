@@ -154,6 +154,7 @@ internal fun Fragment.addSettingsTile(
     val context = requireContext()
     val tile = MaterialCardView(context).apply {
         radius = context.dp(20).toFloat()
+        cardElevation = 0f
         strokeWidth = context.dp(1)
         strokeColor = ContextCompat.getColor(context, R.color.surface_variant)
         setCardBackgroundColor(ContextCompat.getColor(context, R.color.card_background))
