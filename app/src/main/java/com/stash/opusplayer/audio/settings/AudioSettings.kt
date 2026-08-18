@@ -1,14 +1,44 @@
 package com.stash.opusplayer.audio.settings
 
+import android.content.Context
+import androidx.preference.PreferenceManager
+
 /**
  * Canonical audio settings schema, ported from Lumisound (the sibling iOS app)'s
  * `AudioSettings` struct in `Sources/Models/PlaybackModels.swift`.
  *
- * This is a pure data model — it does not talk to `android.media.audiofx.*` or
- * any DSP engine directly. It is a persistence/transport schema that later work
- * will use to drive the actual audio pipeline (analogous to how the Swift
- * struct is a plain `Codable` model that `AudioPlayerManager` reads from).
+ * This class itself does not talk to `android.media.audiofx.*` or any DSP
+ * engine directly — [fromPrefs]/[saveToPrefs] read and write the SAME
+ * underlying `SharedPreferences` keys/files that [com.stash.opusplayer.audio.EqualizerManager]
+ * and [com.stash.opusplayer.service.MusicService] already own and apply live,
+ * rather than introducing a second, competing storage location. That makes
+ * this class a genuine unified snapshot/facade over the real engine state,
+ * not a parallel copy of it: reading [fromPrefs] reflects exactly what's
+ * currently audible, and [saveToPrefs] persists changes those two classes'
+ * own listeners/init paths already pick up (see each accessor's doc for
+ * whether a given field takes effect immediately or on the next track/
+ * session-init — most crossfade/replaygain/speed/pitch/skip-silence
+ * fields live on `MusicService`'s own `SharedPreferences.
+ * OnSharedPreferenceChangeListener` and apply live; EQ/bass-boost fields
+ * persist immediately but only re-apply to the live `Equalizer`/`BassBoost`
+ * instances the next time [com.stash.opusplayer.audio.EqualizerManager]
+ * initializes a session, since that class has no prefs-change listener of
+ * its own today).
  *
+ * Several fields have no corresponding engine implementation at all
+ * ([reverbEnabled]/[reverbWetDryMix]/[reverbPreset] as a settings-driven
+ * toggle -- the app's real reverb DSP, `ParallelReverbAudioProcessor`, has
+ * no prefs-backed enable/mix controls yet; [spatialAudioEnabled],
+ * [monoAudioEnabled], [nightModeEnabled], [autoEqEnabled], [activeEffectId]).
+ * [fromPrefs] leaves these at their class defaults rather than inventing a
+ * mapping, and [saveToPrefs] does not write them anywhere — building real
+ * DSP for any of these is future work, not something this consolidation
+ * pass fabricates. [volume] is also deliberately not read/written here:
+ * the live `app_volume` pref is a UI-space value on its own nonlinear
+ * curve (`MusicService.uiToAmp`), and per-device output level isn't
+ * something a cross-device sync should apply anyway.
+ *
+
  * Persistence convention: this project already depends on Gson (see
  * `com.stash.opusplayer.data.GitHubRelease`) and does not use
  * `kotlinx.serialization` anywhere, so this is a plain data class intended to
@@ -146,7 +176,87 @@ data class AudioSettings(
     val crossfadeActive: Boolean
         get() = crossfadeEnabled || smartCrossfadeEnabled
 
+    /**
+     * Persists the fields this class actually maps to a real engine (see
+     * class doc) into the same `SharedPreferences` files/keys
+     * [EqualizerManager]/`MusicService` already read from. EQ/bass-boost go
+     * to the default `SharedPreferences` file (matching [EqualizerManager]);
+     * everything else goes to the `"settings"`-named file (matching
+     * `MusicService`). Fields with no engine mapping are not written.
+     */
+    fun saveToPrefs(context: Context) {
+        val defaultPrefs = PreferenceManager.getDefaultSharedPreferences(context)
+        defaultPrefs.edit()
+            .putBoolean("equalizer_enabled", equalizerEnabled)
+            .putString("equalizer_preset", eqPreset.name)
+            .putString("custom_eq_bands", eqBands.joinToString(",") { (it * 100).toInt().toString() })
+            .putInt("bass_boost_strength", if (bassBoostEnabled) (bassBoostGain / MAX_BOOST_DB * 1000f).toInt().coerceIn(0, 1000) else 0)
+            .apply()
+
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
+            .putFloat("playback_speed", speed)
+            .putInt("pitch_semitones", pitchSemitones.toInt())
+            .putBoolean("crossfade_enabled", crossfadeEnabled)
+            .putLong("crossfade_duration_ms", (crossfadeDuration * 1000).toLong())
+            .putBoolean("smart_crossfade_enabled", smartCrossfadeEnabled)
+            .putString("crossfade_curve", crossfadeCurve.name)
+            .putBoolean("replaygain_enabled", replayGainEnabled)
+            .putBoolean("skip_silence_enabled", silenceTrimmingEnabled)
+            .apply()
+    }
+
     companion object {
+        /**
+         * Snapshots the fields this class maps to a real engine (see class
+         * doc) out of the same `SharedPreferences` files/keys
+         * [EqualizerManager]/`MusicService` already own -- this is a live
+         * read of currently-audible state, not a separate stored copy.
+         * [eqBands] is resampled/padded to exactly [EQ_BAND_COUNT] entries
+         * from whatever band count this device's native `Equalizer`
+         * actually reports (varies by device/OEM), so it's an approximation
+         * when that count isn't 10 -- same truncate/pad tolerance
+         * [EqualizerManager.applyLevels] itself already uses.
+         */
+        fun fromPrefs(context: Context): AudioSettings {
+            val defaultPrefs = PreferenceManager.getDefaultSharedPreferences(context)
+            val settingsPrefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+            val rawBands = defaultPrefs.getString("custom_eq_bands", null)
+                ?.split(",")
+                ?.mapNotNull { it.trim().toIntOrNull() }
+                ?.map { it / 100f }
+                .orEmpty()
+            val eqBands = when {
+                rawBands.isEmpty() -> List(EQ_BAND_COUNT) { 0f }
+                rawBands.size == EQ_BAND_COUNT -> rawBands
+                rawBands.size > EQ_BAND_COUNT -> rawBands.take(EQ_BAND_COUNT)
+                else -> rawBands + List(EQ_BAND_COUNT - rawBands.size) { 0f }
+            }
+
+            val bassBoostStrength = defaultPrefs.getInt("bass_boost_strength", 0).coerceIn(0, 1000)
+
+            return AudioSettings(
+                speed = settingsPrefs.getFloat("playback_speed", 1.0f),
+                pitchSemitones = settingsPrefs.getInt("pitch_semitones", 0).toFloat(),
+                equalizerEnabled = defaultPrefs.getBoolean("equalizer_enabled", false),
+                eqBands = eqBands,
+                eqPreset = runCatching {
+                    EQPreset.valueOf(defaultPrefs.getString("equalizer_preset", EQPreset.FLAT.name) ?: EQPreset.FLAT.name)
+                }.getOrDefault(EQPreset.CUSTOM),
+                crossfadeEnabled = settingsPrefs.getBoolean("crossfade_enabled", false),
+                crossfadeDuration = settingsPrefs.getLong("crossfade_duration_ms", 2000L) / 1000.0,
+                gaplessEnabled = true,
+                replayGainEnabled = settingsPrefs.getBoolean("replaygain_enabled", false),
+                bassBoostEnabled = bassBoostStrength > 0,
+                bassBoostGain = (bassBoostStrength / 1000f) * MAX_BOOST_DB,
+                smartCrossfadeEnabled = settingsPrefs.getBoolean("smart_crossfade_enabled", false),
+                silenceTrimmingEnabled = settingsPrefs.getBoolean("skip_silence_enabled", false),
+                crossfadeCurve = runCatching {
+                    CrossfadeCurve.valueOf(settingsPrefs.getString("crossfade_curve", CrossfadeCurve.EQUAL_POWER.name) ?: CrossfadeCurve.EQUAL_POWER.name)
+                }.getOrDefault(CrossfadeCurve.EQUAL_POWER)
+            )
+        }
+
         /**
          * Upper bound for [volume]. Values above `1.0` (100%) drive the signal
          * chain's gain stages hotter than unity; `4.0` corresponds to

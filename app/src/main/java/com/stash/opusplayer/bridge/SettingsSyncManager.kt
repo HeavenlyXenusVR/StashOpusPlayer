@@ -3,6 +3,7 @@ package com.stash.opusplayer.bridge
 import android.content.Context
 import android.graphics.Color
 import androidx.preference.PreferenceManager
+import com.google.gson.Gson
 import com.stash.opusplayer.bridge.api.SyncApi
 import com.stash.opusplayer.bridge.api.SyncPushRequest
 import com.stash.opusplayer.bridge.api.SyncSnapshot
@@ -32,14 +33,16 @@ import org.json.JSONObject
  * and the critical favorites/playlists safety constraint on push -- this
  * class is the ONLY intended caller of [SyncApi.postSync].
  *
- * Scope: this app doesn't have a canonical, live-wired equivalent of
- * iOS's `AudioSettings` struct yet (the Kotlin `AudioSettings` data class
- * exists as a schema but isn't actually plumbed into the audio engine --
- * see its own doc comment), so `audio_settings_json` is deliberately left
- * untouched (always `null` on push, ignored on pull) rather than
- * half-mapping a handful of scattered crossfade/equalizer prefs into a
- * struct most of whose fields would be meaningless. What IS synced:
- * [themeColor][SyncSnapshot.themeColor] (accent color) and this app's own
+ * Scope: `audio_settings_json` is synced via
+ * [com.stash.opusplayer.audio.settings.AudioSettings.fromPrefs]/
+ * [com.stash.opusplayer.audio.settings.AudioSettings.saveToPrefs], which
+ * is a genuine live snapshot/facade over [com.stash.opusplayer.audio.EqualizerManager]'s and
+ * `MusicService`'s own `SharedPreferences` -- see that class's doc for
+ * exactly which fields map to a real engine (crossfade, EQ enabled/bands/
+ * preset, bass boost, replaygain, speed/pitch, skip-silence) vs. which are
+ * left at class defaults because no engine implementation exists yet
+ * (reverb-as-a-setting, spatial/mono/night-mode audio, Auto EQ). What ELSE
+ * is synced: [themeColor][SyncSnapshot.themeColor] (accent color) and this app's own
  * Android-specific settings (the whole Appearance block, default grid
  * columns, App Lock), namespaced under a top-level `"android"` key inside
  * `extra_settings_json` -- the same opaque catch-all string field iOS
@@ -69,6 +72,7 @@ class SettingsSyncManager @Inject constructor(
 ) {
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pushJob: Job? = null
+    private val gson = Gson()
 
     /** Call once after login/register succeeds, and once at app start if already logged in. No-op past this device's first-ever bootstrap. */
     fun pullOnce() {
@@ -123,6 +127,12 @@ class SettingsSyncManager @Inject constructor(
         }
         if (appearanceChanged) appearance.saveToPrefs(appContext)
 
+        snapshot.audioSettingsJson?.let { json ->
+            runCatching {
+                gson.fromJson(json, com.stash.opusplayer.audio.settings.AudioSettings::class.java)
+            }.getOrNull()?.saveToPrefs(appContext)
+        }
+
         if (androidJson != null) {
             // Grid column defaults live in the separate "settings"-named
             // SharedPreferences file (see LibrarySettingsFragment/
@@ -168,6 +178,7 @@ class SettingsSyncManager @Inject constructor(
 
         val appearance = AppearancePreferences.fromPrefs(appContext)
         val hex = String.format("#%06X", 0xFFFFFF and appearance.accentColor)
+        val audioSettingsJson = gson.toJson(com.stash.opusplayer.audio.settings.AudioSettings.fromPrefs(appContext))
 
         runCatching {
             syncApi.postSync(
@@ -175,6 +186,7 @@ class SettingsSyncManager @Inject constructor(
                     favorites = favorites,
                     playlists = playlists,
                     themeColor = hex,
+                    audioSettingsJson = audioSettingsJson,
                     extraSettingsJson = existingExtra.toString()
                 )
             )

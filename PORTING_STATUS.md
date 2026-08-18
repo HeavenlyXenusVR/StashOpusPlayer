@@ -808,6 +808,54 @@ confirmed by directory/endpoint survey — not touched by this branch:
   `FoldersFragment`/`FolderDetailFragment`'s actual read/write calls
   before wiring sync to the wrong file.
 
+  **`AudioSettings` is now a live facade over the real audio engine**,
+  not dead scaffolding. Confirmed by direct investigation before writing
+  any code: nothing anywhere in the app constructed or read an
+  `AudioSettings` instance -- it existed only as a documented schema,
+  while crossfade/replaygain/speed/pitch/skip-silence actually lived in
+  `MusicService`'s own `"settings"`-file prefs, EQ/bass-boost lived in
+  `EqualizerManager`'s own default-prefs keys, and a third, larger set of
+  professional-DSP knobs (compression/stereo-width/tube-warmth/etc.)
+  lived in `EnhancedAudioSettings` driving `ProfessionalAudioProcessor`
+  -- three separate, overlapping sources of truth with no single model
+  tying them together. `AudioSettings.fromPrefs(context)`/
+  `saveToPrefs(context)` now read and write the SAME underlying keys/
+  files those classes already own (not a new parallel storage location),
+  making `AudioSettings` a genuine unified snapshot: `fromPrefs` reflects
+  exactly what's currently audible, `saveToPrefs` persists changes
+  `MusicService`'s own `SharedPreferences.OnSharedPreferenceChangeListener`
+  already picks up live for crossfade/replaygain/speed/pitch/skip-silence
+  (EQ/bass-boost persist immediately but only re-apply to the live
+  `Equalizer`/`BassBoost` instances on the next session-init, since
+  `EqualizerManager` has no prefs-change listener of its own).
+
+  Deliberately NOT fabricated: fields with no real engine anywhere
+  (`reverbEnabled`/`reverbWetDryMix`/`reverbPreset` as a settings-driven
+  toggle -- the app's actual reverb DSP, `ParallelReverbAudioProcessor`,
+  has no prefs-backed controls yet; `spatialAudioEnabled`,
+  `monoAudioEnabled`, `nightModeEnabled`, `autoEqEnabled`,
+  `activeEffectId`) are left at class defaults on read and never written
+  on save, rather than inventing behavior. `volume` is deliberately not
+  mapped either -- the live `app_volume` pref is a UI-space value on its
+  own nonlinear curve, and per-device output level isn't something a
+  cross-device sync should apply anyway. EQ band counts are resampled/
+  padded to the schema's fixed 10 bands from whatever count this
+  device's native `Equalizer` actually reports (varies by OEM), matching
+  the same truncate/pad tolerance `EqualizerManager.applyLevels` already
+  uses internally.
+
+  This directly unblocks the `audio_settings_json` field cross-device
+  settings sync (`port-v47`) deliberately left untouched -- it now
+  round-trips through `GET`/`POST /user/sync` for real, and because
+  `AudioSettings`'s fields were already ported field-for-field to match
+  Lumisound's own Swift `AudioSettings` struct, this is a genuine
+  cross-platform sync (Android <-> iOS), not just Android-to-Android.
+  Push triggers were added at the fields that already had a
+  `SettingsSyncManager.schedulePushFrom` hook point (crossfade toggle/
+  duration, skip-silence, ReplayGain, playback speed/pitch); EQ-screen
+  changes persist correctly but don't yet trigger an immediate push --
+  they'll still sync on the next push from any other tracked setting.
+
   **Cloud Backups (`/user/backups*`) are now ported** too
   (`Settings -> Backup History`, `com.stash.opusplayer.backup.CloudBackupService`).
   Metadata-only, matching the bridge's own design -- server-side snapshots

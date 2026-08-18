@@ -289,11 +289,15 @@ data class AddPlaylistTrackResponse(
  * zero risk of an incomplete field mapping silently dropping data on a
  * round trip.
  *
- * Of the ~24 settings fields the bridge actually supports, only the ones
- * with a real Android equivalent are modeled here: [themeColor] (accent
- * color) and [extraSettingsJson] (this client's own Android-specific
- * settings bag, namespaced under an `"android"` key inside the same JSON
- * string iOS uses for ITS catch-all extras -- see
+ * Of the ~24 settings fields the bridge actually supports, the ones with a
+ * real Android equivalent are modeled here: [themeColor] (accent color),
+ * [audioSettingsJson] (Gson-serialized [com.stash.opusplayer.audio.settings.AudioSettings]
+ * -- field-compatible with iOS's own `AudioSettings` struct, so this is a
+ * genuine cross-platform round-trip, not just an Android-to-Android one;
+ * see that class's doc for exactly which of ITS fields are backed by a
+ * real engine and which are inert), and [extraSettingsJson] (this client's
+ * own Android-specific settings bag, namespaced under an `"android"` key
+ * inside the same JSON string iOS uses for ITS catch-all extras -- see
  * [com.stash.opusplayer.bridge.SettingsSyncManager]'s doc for the merge
  * strategy). Fields with no Android equivalent at all (`vinyl_disc_enabled`,
  * `car_mode_enabled`, `now_playing_seeker_style`, `bg_shuffle_interval`,
@@ -306,6 +310,7 @@ data class SyncSnapshot(
     val favorites: com.google.gson.JsonElement? = null,
     val playlists: com.google.gson.JsonElement? = null,
     @SerializedName("theme_color") val themeColor: String? = null,
+    @SerializedName("audio_settings_json") val audioSettingsJson: String? = null,
     @SerializedName("extra_settings_json") val extraSettingsJson: String? = null
 )
 
@@ -328,6 +333,7 @@ data class SyncPushRequest(
     val favorites: com.google.gson.JsonElement,
     val playlists: com.google.gson.JsonElement,
     @SerializedName("theme_color") val themeColor: String? = null,
+    @SerializedName("audio_settings_json") val audioSettingsJson: String? = null,
     @SerializedName("extra_settings_json") val extraSettingsJson: String? = null
 )
 
