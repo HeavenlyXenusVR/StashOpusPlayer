@@ -9,6 +9,49 @@ under `Sources/Views`) with four dedicated Lua-scripting engines. This doc
 covers those four engines' port status plus an honest read of how much of
 the rest of Lumisound has no Stash equivalent yet.
 
+## Release pipeline status (2026-08-17)
+
+Signed releases were silently broken all the way back through at least
+`port-v51`: `release.yml` requires 4 signing secrets
+(`KEYSTORE_BASE64`/`KEYSTORE_PASSWORD`/`KEY_ALIAS`/`KEY_PASSWORD`) and none
+were ever configured on the repo, so every tagged release had zero APK/AAB
+attached despite `build.yml` (debug-only CI) passing green. Fixed: generated
+a fresh release keystore (no prior signed release existed anywhere, so
+nothing to preserve), uploaded all 4 secrets, and confirmed `release.yml`
+now succeeds end-to-end (`port-v57` re-run: signed APK + AAB + checksums
+attached). Keystore backed up at
+`~/Documents/Projects/StashOpusPlayer-signing-keys/` — **not in git, back it
+up somewhere durable**, since losing it breaks in-place updates for anyone
+who already has a signed build installed from here forward. Tags before
+`port-v51` weren't individually re-verified/re-run; treat any release older
+than `port-v57` as possibly missing signed assets unless re-checked.
+
+Going forward: after every tag, verify both `build.yml` *and* `release.yml`
+succeeded, and that the release actually has assets
+(`gh release view <tag> --json assets`) — not just that CI is green.
+
+## UI redesign status (port-v49 → port-v57, not tracked in the table below)
+
+Separate from Lua/feature-parity work: a from-scratch YouTube-Music-style
+flat redesign (no cards/elevation, flush rows, ripple-only touch feedback)
+was applied across Mini Player, Now Playing, Home shelves, Playlists/
+Artists/Genres/Folders rows, Song rows (list/grid/folder-card), Queue,
+Metadata, and a chip-consistency fix on YouTube Search results.
+**Not yet redesigned**: the live **Equalizer screen**
+(`fragment_equalizer.xml`/`EqualizerFragment.kt`) — still uses the older
+`SeekBar`-in-`LinearLayout`/preset-spinner look, needs the same flat
+treatment (band sliders, preset chips, switches). YouTube Search's
+thumbnail/action-button row (`item_youtube_video.xml`) still uses
+`NeomorphicButton`/`NeomorphicAccentButton` styles for its play/download
+buttons — visually flat now (the underlying drawables were flattened in
+port-v51) but not restructured, worth a pass to confirm it still makes
+sense structurally rather than just accidentally-flat.
+
+Audio engine: `AudioSettings` is wired as a live facade (port-v48, see
+below) — this closed the main "audio engine not actually wired" gap flagged
+at the start of this pass. No further audio-engine work is outstanding from
+this pass.
+
 ## The 4 Lua engines
 
 | Engine | Status | Bundled scripts | Wired into a live consumer? |
