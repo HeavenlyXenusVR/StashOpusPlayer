@@ -8,6 +8,7 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -16,10 +17,12 @@ import com.stash.opusplayer.data.MusicRepository
 import com.stash.opusplayer.data.Song
 import com.stash.opusplayer.databinding.FragmentMusicLibraryBinding
 import com.stash.opusplayer.ui.MainActivity
+import com.stash.opusplayer.ui.adapters.ShelvesHeaderAdapter
 import com.stash.opusplayer.ui.adapters.SongAdapter
 import com.stash.opusplayer.ui.appearance.ThemeManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MusicLibraryFragment : Fragment() {
@@ -32,7 +35,9 @@ class MusicLibraryFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var songAdapter: SongAdapter
+    private lateinit var shelvesHeaderAdapter: ShelvesHeaderAdapter
     private lateinit var musicRepository: MusicRepository
+    private lateinit var metadataExtractor: com.stash.opusplayer.utils.MetadataExtractor
     private var allSongs: List<Song> = emptyList()
 
     override fun onCreateView(
@@ -67,7 +72,7 @@ class MusicLibraryFragment : Fragment() {
     }
 
     private fun setupRecyclerView() {
-        val metadataExtractor = com.stash.opusplayer.utils.MetadataExtractor(requireContext())
+        metadataExtractor = com.stash.opusplayer.utils.MetadataExtractor(requireContext())
 
         songAdapter = SongAdapter(
             onSongClick = { song ->
@@ -96,7 +101,16 @@ class MusicLibraryFragment : Fragment() {
             metadataExtractor = metadataExtractor
         )
 
-        binding.recyclerView.adapter = songAdapter
+        shelvesHeaderAdapter = ShelvesHeaderAdapter(
+            metadataExtractor = metadataExtractor,
+            onSongClick = { song ->
+                val list = songAdapter.currentList
+                val index = list.indexOfFirst { it.id == song.id }.let { if (it >= 0) it else 0 }
+                (activity as? MainActivity)?.playSongsStartingFrom(list, index, "Songs")
+            }
+        )
+
+        binding.recyclerView.adapter = ConcatAdapter(shelvesHeaderAdapter, songAdapter)
         binding.recyclerView.clipToPadding = false
         applyColumns(currentColumns)
     }
@@ -235,10 +249,18 @@ class MusicLibraryFragment : Fragment() {
             songAdapter.setColumns(1)
             gridDecoration = null
         } else {
-            binding.recyclerView.layoutManager = GridLayoutManager(requireContext(), cols)
+            val gridLayoutManager = GridLayoutManager(requireContext(), cols)
+            // Position 0 in the ConcatAdapter is always ShelvesHeaderAdapter's
+            // single item (see its own doc comment for why that's a fixed
+            // invariant) -- give it the full row width; every song item
+            // after it gets a normal 1-span cell.
+            gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int): Int = if (position == 0) cols else 1
+            }
+            binding.recyclerView.layoutManager = gridLayoutManager
             songAdapter.setColumns(cols)
             val spacing = ThemeManager.scaleDp(requireContext(), 8)
-            gridDecoration = com.stash.opusplayer.ui.widgets.GridSpacingItemDecoration(cols, spacing, true)
+            gridDecoration = com.stash.opusplayer.ui.widgets.HeaderAwareGridSpacingItemDecoration(cols, spacing, true)
             binding.recyclerView.addItemDecoration(gridDecoration!!)
         }
     }
@@ -412,6 +434,28 @@ class MusicLibraryFragment : Fragment() {
             .show()
     }
 
+    /**
+     * Populates the Home screen's shelves (see [ShelvesHeaderAdapter]'s doc
+     * for why "Recently Played" isn't one of them). "Recently Added" is
+     * derived by sorting [songs] client-side by [Song.dateAdded] -- no
+     * separate query, since [songs] is already the just-loaded full list.
+     * "Favorites" reuses the exact same [MusicRepository.getFavorites]
+     * `Flow` [FavoritesFragment] itself collects from.
+     */
+    private fun loadShelves(songs: List<Song>) {
+        val recentlyAdded = songs.sortedByDescending { it.dateAdded }.take(15)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val favorites = try {
+                musicRepository.getFavorites().first().take(15)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            if (_binding != null) {
+                shelvesHeaderAdapter.submitShelves(favorites, recentlyAdded, songs.isNotEmpty())
+            }
+        }
+    }
+
     private fun loadSongs() {
         loadSongsJob?.cancel()
         loadSongsJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -421,6 +465,7 @@ class MusicLibraryFragment : Fragment() {
                 if (fast.isNotEmpty()) {
                     allSongs = fast
                     songAdapter.submitList(fast)
+                    loadShelves(fast)
                     currentBinding.recyclerView.visibility = View.VISIBLE
                     currentBinding.emptyStateContainer.visibility = View.GONE
                     updateLibraryHeader(
@@ -447,6 +492,7 @@ class MusicLibraryFragment : Fragment() {
                     if (_binding != null && full.isNotEmpty()) {
                         allSongs = full
                         songAdapter.submitList(full)
+                        loadShelves(full)
                         updateLibraryHeader(
                             headline = "Song Library",
                             subtitle = "Recent tracks, deep cuts, and loose files in one place.",
