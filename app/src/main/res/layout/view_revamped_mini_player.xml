@@ -1,38 +1,93 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    YouTube-Music-style mini player: flush edge-to-edge bar (no floating
+    card margins/rounded corners), a thin accent progress line flush along
+    the very top edge instead of an inline seekbar+time-label row, flush
+    square album art with no padding frame, and plain icon transport
+    buttons with no colored circle backgrounds. See
+    RevampedMiniPlayerView.applyAppearancePreferences() for the runtime
+    styling that pairs with this layout: corner radius/elevation/margins/
+    button backgrounds are forced flat there regardless of the user's
+    Appearance settings, since a floating neomorphic card contradicts this
+    look. All existing view ids are kept (including currentTimeText/
+    totalTimeText, set GONE here) so none of this view's runtime logic
+    needed to change, only its shape.
+-->
 <androidx.cardview.widget.CardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/miniPlayerCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginStart="6dp"
-    android:layout_marginTop="4dp"
-    android:layout_marginEnd="6dp"
-    android:layout_marginBottom="4dp"
     app:cardBackgroundColor="@android:color/transparent"
-    app:cardCornerRadius="20dp"
+    app:cardCornerRadius="0dp"
     app:cardElevation="0dp"
     app:cardUseCompatPadding="false">
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/miniPlayerContent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/mini_player_panel_background"
-        android:minHeight="76dp"
-        android:paddingStart="10dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="8dp">
+        android:minHeight="60dp"
+        android:paddingStart="12dp"
+        android:paddingTop="0dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="0dp">
+
+        <!-- Thin flush-width progress line along the very top edge, replacing the old inline seekbar+time-label row. Thumb/time labels removed from view; ids kept for binding compatibility, see file doc comment. -->
+        <SeekBar
+            android:id="@+id/progressBar"
+            style="@style/Widget.AppCompat.SeekBar"
+            android:layout_width="0dp"
+            android:layout_height="3dp"
+            android:layout_marginBottom="0dp"
+            android:max="100"
+            android:maxHeight="3dp"
+            android:minHeight="3dp"
+            android:paddingStart="0dp"
+            android:paddingTop="0dp"
+            android:paddingEnd="0dp"
+            android:paddingBottom="0dp"
+            android:progress="0"
+            android:progressBackgroundTint="@color/player_background"
+            android:splitTrack="false"
+            android:thumb="@null"
+            android:thumbTint="@android:color/transparent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/currentTimeText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0:00"
+            android:textColor="@color/text_secondary"
+            android:textSize="9sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/progressBar" />
+
+        <TextView
+            android:id="@+id/totalTimeText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0:00"
+            android:textColor="@color/text_secondary"
+            android:textSize="9sp"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/progressBar" />
 
         <FrameLayout
             android:id="@+id/albumArtContainer"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/mini_player_button_subtle_background"
-            android:padding="3dp"
-            app:layout_constraintBottom_toTopOf="@id/progressContainer"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent">
+            app:layout_constraintTop_toBottomOf="@id/progressBar">
 
             <ImageView
                 android:id="@+id/albumArt"
@@ -45,10 +100,9 @@
             <View
                 android:id="@+id/visualizerView"
                 android:layout_width="match_parent"
-                android:layout_height="5dp"
+                android:layout_height="0dp"
                 android:layout_gravity="bottom"
-                android:alpha="0.9"
-                android:background="@drawable/song_duration_chip_background" />
+                android:visibility="gone" />
 
         </FrameLayout>
 
@@ -56,11 +110,11 @@
             android:id="@+id/trackInfoContainer"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
             android:orientation="vertical"
-            app:layout_constraintBottom_toTopOf="@id/progressContainer"
-            app:layout_constraintEnd_toStartOf="@id/playPauseButton"
+            app:layout_constraintBottom_toBottomOf="@id/albumArtContainer"
+            app:layout_constraintEnd_toStartOf="@id/previousButton"
             app:layout_constraintStart_toEndOf="@id/albumArtContainer"
             app:layout_constraintTop_toTopOf="@id/albumArtContainer">
 
@@ -83,111 +137,70 @@
                 android:id="@+id/trackArtist"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:background="@drawable/song_duration_chip_background"
+                android:layout_marginTop="2dp"
+                android:background="@android:color/transparent"
                 android:maxLines="1"
-                android:paddingStart="7dp"
-                android:paddingTop="3dp"
-                android:paddingEnd="7dp"
-                android:paddingBottom="3dp"
+                android:paddingStart="0dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="0dp"
                 android:text="Artist Name"
                 android:textColor="@color/text_secondary"
-                android:textSize="10sp" />
+                android:textSize="12sp" />
 
         </LinearLayout>
 
+        <!-- Plain icon transport buttons, no colored circle/chip backgrounds; see applyAppearancePreferences(). -->
+        <ImageButton
+            android:id="@+id/previousButton"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginEnd="2dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Previous track"
+            android:padding="4dp"
+            android:src="@drawable/ic_skip_previous"
+            android:tint="@color/text_primary"
+            app:layout_constraintBottom_toBottomOf="@id/albumArtContainer"
+            app:layout_constraintEnd_toStartOf="@id/playPauseButton"
+            app:layout_constraintTop_toTopOf="@id/albumArtContainer" />
+
+        <ImageButton
+            android:id="@+id/playPauseButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="2dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Play/Pause"
+            android:padding="2dp"
+            android:src="@drawable/ic_play_arrow"
+            android:tint="@color/text_primary"
+            app:layout_constraintBottom_toBottomOf="@id/albumArtContainer"
+            app:layout_constraintEnd_toStartOf="@id/nextButton"
+            app:layout_constraintTop_toTopOf="@id/albumArtContainer" />
+
+        <ImageButton
+            android:id="@+id/nextButton"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Next track"
+            android:padding="4dp"
+            android:src="@drawable/ic_skip_next"
+            android:tint="@color/text_primary"
+            app:layout_constraintBottom_toBottomOf="@id/albumArtContainer"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/albumArtContainer" />
+
+        <!-- Kept for binding compatibility (RevampedMiniPlayerView still lays it out/animates it); collapsed to zero size, no longer visually part of this design. -->
         <LinearLayout
             android:id="@+id/progressContainer"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginTop="6dp"
-            android:layout_marginEnd="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            app:layout_constraintBottom_toBottomOf="@id/albumArtContainer"
-            app:layout_constraintEnd_toStartOf="@id/playPauseButton"
-            app:layout_constraintStart_toEndOf="@id/albumArtContainer">
-
-            <TextView
-                android:id="@+id/currentTimeText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="30dp"
-                android:text="0:00"
-                android:textColor="@color/text_secondary"
-                android:textSize="9sp" />
-
-            <SeekBar
-                android:id="@+id/progressBar"
-                style="@style/Widget.AppCompat.SeekBar"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="4dp"
-                android:layout_weight="1"
-                android:max="100"
-                android:progress="0"
-                android:progressBackgroundTint="@color/player_background"
-                android:progressTint="@color/secondary_color"
-                android:thumbTint="@color/secondary_color" />
-
-            <TextView
-                android:id="@+id/totalTimeText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:minWidth="30dp"
-                android:text="0:00"
-                android:textColor="@color/text_secondary"
-                android:textSize="9sp" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            app:layout_constraintBottom_toBottomOf="@id/albumArtContainer"
+            android:layout_height="0dp"
+            android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="@id/albumArtContainer">
-
-            <ImageButton
-                android:id="@+id/previousButton"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:layout_marginEnd="2dp"
-                android:alpha="0.9"
-                android:background="@drawable/mini_player_button_subtle_background"
-                android:contentDescription="Previous track"
-                android:padding="7dp"
-                android:src="@drawable/ic_skip_previous"
-                android:tint="@color/text_primary" />
-
-            <ImageButton
-                android:id="@+id/playPauseButton"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginEnd="2dp"
-                android:background="@drawable/mini_player_button_accent_background"
-                android:contentDescription="Play/Pause"
-                android:padding="8dp"
-                android:src="@drawable/ic_play_arrow"
-                android:tint="@android:color/white" />
-
-            <ImageButton
-                android:id="@+id/nextButton"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:alpha="0.9"
-                android:background="@drawable/mini_player_button_subtle_background"
-                android:contentDescription="Next track"
-                android:padding="7dp"
-                android:src="@drawable/ic_skip_next"
-                android:tint="@color/text_primary" />
-
-        </LinearLayout>
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/progressBar" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

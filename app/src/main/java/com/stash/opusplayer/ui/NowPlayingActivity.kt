@@ -1619,13 +1619,6 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
                 ColorUtils.blendARGB(rawAccent, prefs.textPrimaryColor, 0.12f)
             else -> rawAccent
         }
-        val surface = when (currentLayoutTheme) {
-            com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.VINYL ->
-                ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.24f)
-            com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.MINIMAL ->
-                ColorUtils.blendARGB(prefs.primaryColor, accent, 0.18f)
-            else -> ColorUtils.blendARGB(prefs.primaryColor, accent, 0.26f)
-        }
         val elevated = when (currentLayoutTheme) {
             com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.VINYL ->
                 ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.14f)
@@ -1633,18 +1626,22 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
                 ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.1f)
             else -> ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.18f)
         }
-        val cardSurface = when (currentLayoutTheme) {
-            com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.MINIMAL ->
-                ColorUtils.blendARGB(surface, prefs.backgroundColor, 0.22f)
-            else -> ColorUtils.blendARGB(surface, prefs.backgroundColor, 0.35f)
-        }
         val chipTint = ColorUtils.blendARGB(accent, prefs.backgroundColor, if (currentLayoutTheme == com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.MINIMAL) 0.42f else 0.55f)
-        val subtleButtonTint = ColorUtils.blendARGB(cardSurface, prefs.backgroundColor, 0.25f)
 
-        binding.songInfoCard.setCardBackgroundColor(surface)
-        binding.progressCard.setCardBackgroundColor(cardSurface)
-        binding.controlsCard.setCardBackgroundColor(cardSurface)
-        binding.secondaryActionsCard.setCardBackgroundColor(cardSurface)
+        // YouTube-Music-style flat layout: panels blend straight into the
+        // screen background instead of sitting in bordered, distinctly-
+        // colored "boxed panel" cards -- only the album art card and the
+        // metadata detail overlay keep a visually distinct surface, since
+        // those are the two places a raised panel still reads as
+        // intentional (artwork frame, modal-like detail panel).
+        binding.songInfoCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.songInfoCard.strokeWidth = 0
+        binding.progressCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.progressCard.strokeWidth = 0
+        binding.controlsCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.controlsCard.strokeWidth = 0
+        binding.secondaryActionsCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.secondaryActionsCard.strokeWidth = 0
         binding.metadataContainer.setCardBackgroundColor(elevated)
         binding.albumArtCard.setCardBackgroundColor(ColorUtils.blendARGB(accent, prefs.backgroundColor, 0.28f))
         binding.layoutThemeBadge.text = currentLayoutTheme.displayName
@@ -1658,8 +1655,11 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
         binding.vinylGrooveOverlay.background.mutate().setTint(ColorUtils.setAlphaComponent(accent, 170))
         binding.vinylSpindleView.background.mutate().setTint(ColorUtils.blendARGB(accent, prefs.textPrimaryColor, 0.34f))
 
+        // Plain icon buttons (no colored chip backgrounds) -- YouTube Music's
+        // now-playing transport row is icons directly on the background,
+        // with only the play/pause button as a filled circle.
         listOf(binding.backButton, binding.menuButton, binding.shuffleButton, binding.repeatButton, binding.previousButton, binding.nextButton, binding.favoriteButton, binding.queueButton, binding.fastForwardButton, binding.metadataButton, binding.metadataBackButton).forEach { button ->
-            button.backgroundTintList = ColorStateList.valueOf(subtleButtonTint)
+            button.backgroundTintList = ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
             button.imageTintList = ColorStateList.valueOf(prefs.textPrimaryColor)
         }
         binding.playPauseButton.backgroundTintList = ColorStateList.valueOf(accent)
