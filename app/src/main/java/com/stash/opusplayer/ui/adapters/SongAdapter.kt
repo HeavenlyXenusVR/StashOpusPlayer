@@ -133,11 +133,8 @@ class SongAdapter(
                 binding.root.layoutParams = rootLayoutParams
             }
 
-            binding.root.radius = px(9).toFloat()
-            binding.root.cardElevation = px(2).toFloat()
             binding.root.minimumHeight = px(62)
-
-            (binding.root.getChildAt(0) as? ViewGroup)?.setPadding(px(10), px(8), px(10), px(8))
+            binding.root.setPadding(px(16), px(8), px(16), px(8))
 
             binding.songArtwork.layoutParams = binding.songArtwork.layoutParams.apply {
                 width = px(44)
@@ -214,9 +211,8 @@ class SongAdapter(
             if (rootLayoutParams != null) {
                 binding.root.layoutParams = rootLayoutParams
             }
-            binding.root.radius = px(18).toFloat()
-            binding.root.strokeWidth = px(1)
             binding.root.minimumHeight = px(84)
+            binding.root.setPadding(px(16), px(10), px(16), px(10))
 
             binding.songArtwork.layoutParams = binding.songArtwork.layoutParams.apply {
                 width = px(60)
@@ -276,12 +272,13 @@ class SongAdapter(
                 binding.root.layoutParams = rootLayoutParams
             }
 
-            binding.root.radius = px(9).toFloat()
-            binding.root.cardElevation = px(2).toFloat()
-
-            val container = binding.root.getChildAt(0) as? ViewGroup
-            val artworkContainer = container?.getChildAt(0)
-            val textContainer = container?.getChildAt(1) as? ViewGroup
+            // Root is now the LinearLayout that used to be MaterialCardView's
+            // single child directly (that wrapper was removed -- see
+            // item_song_grid.xml's own doc comment), so its two children are
+            // one level shallower than before: child(0) is the artwork
+            // ConstraintLayout, child(1) is the text LinearLayout.
+            val artworkContainer = binding.root.getChildAt(0)
+            val textContainer = binding.root.getChildAt(1) as? ViewGroup
             textContainer?.setPadding(px(8), px(8), px(8), px(8))
 
             artworkContainer?.minimumHeight = px(100)
