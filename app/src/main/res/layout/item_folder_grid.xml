@@ -1,86 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<!-- Flush YouTube-Music-style grid tile: no card border/elevation, just the artwork (rounded corners) with title/subtitle below on the plain screen background, matching how YT Music's own grid tiles have no visible card chrome. All view ids kept identical to the old MaterialCardView version for binding compatibility. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:foreground="?attr/selectableItemBackground"
-    app:cardBackgroundColor="@color/surface_color"
-    app:cardCornerRadius="24dp"
-    app:cardElevation="0dp"
-    app:strokeColor="@color/border_gray"
-    app:strokeWidth="1dp">
+    android:background="?attr/selectableItemBackground"
+    android:orientation="vertical"
+    android:padding="8dp">
 
-    <LinearLayout
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="156dp">
+
+        <ImageView
+            android:id="@+id/folderArtwork"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/rounded_corner_bg"
+            android:contentDescription="@string/album_artwork"
+            android:scaleType="centerCrop" />
+
+        <TextView
+            android:id="@+id/folderCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="10dp"
+            android:background="@drawable/song_duration_chip_background"
+            android:paddingStart="10dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="4dp"
+            android:text="0 songs"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/folderName"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="12dp">
+        android:layout_marginTop="10dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="Folder"
+        android:textAppearance="@style/TextAppearance.StashWave.Body"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp"
+        android:textStyle="bold" />
 
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="156dp">
+    <TextView
+        android:id="@+id/folderPath"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="middle"
+        android:maxLines="1"
+        android:text="Parent path"
+        android:textAppearance="@style/TextAppearance.StashWave.Subtitle"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
 
-            <ImageView
-                android:id="@+id/folderArtwork"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="@color/player_background"
-                android:contentDescription="@string/album_artwork"
-                android:scaleType="centerCrop" />
+    <TextView
+        android:id="@+id/folderPreview"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="Starts with the first song in this folder"
+        android:textAppearance="@style/TextAppearance.StashWave.Body"
+        android:textColor="@color/text_primary"
+        android:textSize="12sp" />
 
-            <TextView
-                android:id="@+id/folderCount"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="top|end"
-                android:layout_margin="10dp"
-                android:background="@drawable/duration_background"
-                android:paddingStart="10dp"
-                android:paddingTop="6dp"
-                android:paddingEnd="10dp"
-                android:paddingBottom="6dp"
-                android:text="0 songs"
-                android:textColor="@color/text_primary"
-                android:textSize="12sp" />
-        </FrameLayout>
-
-        <TextView
-            android:id="@+id/folderName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:text="Folder"
-            android:textAppearance="@style/TextAppearance.StashWave.Body"
-            android:textColor="@color/text_primary"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/folderPath"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:ellipsize="middle"
-            android:maxLines="1"
-            android:text="Parent path"
-            android:textAppearance="@style/TextAppearance.StashWave.Subtitle"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/folderPreview"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:text="Starts with the first song in this folder"
-            android:textAppearance="@style/TextAppearance.StashWave.Body"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-    </LinearLayout>
-
-</com.google.android.material.card.MaterialCardView>
+</LinearLayout>

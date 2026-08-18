@@ -224,10 +224,8 @@ private class PlaylistsViewHolder(
             binding.root.layoutParams = rootLayoutParams
         }
 
-        binding.root.radius = px(10).toFloat()
-        binding.root.cardElevation = px(2).toFloat()
         binding.root.minimumHeight = px(70)
-        (binding.root.getChildAt(0) as? ViewGroup)?.setPadding(px(12), px(10), px(12), px(10))
+        binding.root.setPadding(px(16), px(8), px(16), px(8))
 
         binding.playlistIcon.layoutParams = binding.playlistIcon.layoutParams.apply {
             width = px(34)
