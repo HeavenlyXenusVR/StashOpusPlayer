@@ -44,7 +44,12 @@
     <color name="transparent">#00000000</color>
     <color name="semi_transparent">#80000000</color>
     <color name="light_gray">#F5F5F5</color>
-    <color name="border_gray">#2A2A2A</color>
+    <!-- Softened to a translucent white hairline (was a solid, fairly dark
+         #2A2A2A) so list-item card borders read as a subtle edge against
+         the dark theme rather than a hard outline: matches the
+         translucent stroke used on the flattened neomorphic card
+         drawable/Home shelves/Now Playing panels. -->
+    <color name="border_gray">#1FFFFFFF</color>
     <color name="text_color_secondary">#757575</color>
     
     <!-- Neomorphic Gradient colors -->
