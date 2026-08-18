@@ -90,10 +90,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textAppearance="@style/TextAppearance.StashWave.Subtitle"
-                android:textColor="@color/text_secondary"
-                android:background="@drawable/duration_background"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/song_duration_chip_background"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
                 android:layout_marginEnd="8dp"
                 tools:text="4:13" />
 
