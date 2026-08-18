@@ -4,15 +4,22 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.stash.opusplayer.data.Song
 import com.stash.opusplayer.databinding.FragmentArtistSongsBinding
+import com.stash.opusplayer.discovery.LinerNotesService
 import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.adapters.SongAdapter
+import com.stash.opusplayer.ui.compose.discovery.LinerNotesCard
 import com.stash.opusplayer.utils.MetadataExtractor
+import kotlinx.coroutines.launch
 
 class FolderDetailFragment : Fragment() {
     private var currentColumns: Int = 1
@@ -25,16 +32,20 @@ class FolderDetailFragment : Fragment() {
 
     private var folderTitle: String = ""
     private var songs: List<Song> = emptyList()
+    private var isAlbum: Boolean = false
+    private val linerNotesState = mutableStateOf<String?>(null)
 
     companion object {
         private const val ARG_FOLDER_TITLE = "folder_title"
         private const val ARG_SONGS = "songs"
+        private const val ARG_IS_ALBUM = "is_album"
 
-        fun newInstance(title: String, songs: ArrayList<Song>): FolderDetailFragment {
+        fun newInstance(title: String, songs: ArrayList<Song>, isAlbum: Boolean = false): FolderDetailFragment {
             val f = FolderDetailFragment()
             val args = Bundle().apply {
                 putString(ARG_FOLDER_TITLE, title)
                 putParcelableArrayList(ARG_SONGS, songs)
+                putBoolean(ARG_IS_ALBUM, isAlbum)
             }
             f.arguments = args
             return f
@@ -51,6 +62,7 @@ class FolderDetailFragment : Fragment() {
                 @Suppress("DEPRECATION")
                 it.getParcelableArrayList<Song>(ARG_SONGS) ?: emptyList()
             }
+            isAlbum = it.getBoolean(ARG_IS_ALBUM, false)
         }
     }
 
@@ -78,7 +90,31 @@ class FolderDetailFragment : Fragment() {
         setupRecycler()
         setupLayoutToggle()
         setupSortButton()
+        setupLinerNotesCard()
         bindData()
+    }
+
+    /**
+     * Ported from `AlbumDetailView.swift`'s `AlbumLinerNotesCard`. Only
+     * shown when this screen was reached as an album grouping (see
+     * `MainActivity`'s `ACTION_GO_TO_ALBUM` handler) -- this fragment
+     * doubles as a generic folder browser (see class doc/[newInstance]),
+     * and a folder full of unrelated tracks has no single artist/album
+     * pair to look up liner notes for.
+     */
+    private fun setupLinerNotesCard() {
+        val artistName = songs.firstOrNull()?.artist.orEmpty()
+        if (!isAlbum || artistName.isBlank() || folderTitle.isBlank()) return
+
+        binding.artistBioComposeView.setContent {
+            MaterialTheme {
+                val blurb by linerNotesState
+                blurb?.let { LinerNotesCard(blurb = it) }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            linerNotesState.value = LinerNotesService.fetchLinerNotes(requireContext(), artistName, folderTitle)
+        }
     }
 
     private fun setupRecycler() {

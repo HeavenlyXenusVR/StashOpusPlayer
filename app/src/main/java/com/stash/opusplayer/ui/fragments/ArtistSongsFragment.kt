@@ -1,16 +1,24 @@
 package com.stash.opusplayer.ui.fragments
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.stash.opusplayer.bridge.api.ArtistBioResponse
 import com.stash.opusplayer.data.Song
 import com.stash.opusplayer.databinding.FragmentArtistSongsBinding
+import com.stash.opusplayer.discovery.ArtistBioService
 import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.adapters.SongAdapter
+import com.stash.opusplayer.ui.compose.discovery.ArtistBioCard
 import com.stash.opusplayer.utils.MetadataExtractor
 import kotlinx.coroutines.launch
 
@@ -24,6 +32,8 @@ class ArtistSongsFragment : Fragment() {
     
     private var artistName: String = ""
     private var songs: List<Song> = emptyList()
+
+    private val bioState = mutableStateOf<ArtistBioResponse?>(null)
     
     companion object {
         private const val ARG_ARTIST_NAME = "artist_name"
@@ -67,7 +77,8 @@ class ArtistSongsFragment : Fragment() {
         
         metadataExtractor = MetadataExtractor(requireContext())
         setupRecyclerView()
-        
+        setupBioCard()
+
         // If no songs were provided, fetch quickly by artist and schedule background metadata scan
         if (songs.isEmpty() && artistName.isNotBlank()) {
             binding.emptyStateText.text = "Loading songs…"
@@ -90,6 +101,34 @@ class ArtistSongsFragment : Fragment() {
         }
     }
     
+    /**
+     * Ported from Lumisound's `ArtistDetailView` bio card. Uses a raw
+     * [mutableStateOf] (not `remember`) as a Fragment field so a plain
+     * coroutine started from [onViewCreated] can update it and trigger
+     * recomposition -- this fragment isn't Compose-hosted, [ArtistBioCard]
+     * is just one composable island inside an otherwise-View screen.
+     */
+    private fun setupBioCard() {
+        binding.artistBioComposeView.setContent {
+            MaterialTheme {
+                val bio by bioState
+                bio?.let {
+                    ArtistBioCard(
+                        bio = it,
+                        onOpenWikipedia = { url ->
+                            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
+                    )
+                }
+            }
+        }
+        if (artistName.isNotBlank()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                bioState.value = ArtistBioService.fetchBio(requireContext(), artistName)
+            }
+        }
+    }
+
     private fun setupRecyclerView() {
         songAdapter = SongAdapter(
             onSongClick = { song ->

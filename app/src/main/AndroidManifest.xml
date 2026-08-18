@@ -42,53 +42,81 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
-        android:name=".StashWaveApplication"
+        android:name=".StashOpusApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.StashWavePlayer"
+        android:theme="@style/Theme.StashOpusPlayer"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
         
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.StashWavePlayer">
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.StashOpusPlayer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            
+
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="audio/*" />
             </intent-filter>
+
+            <!-- Discord OAuth2 verification callback: the bridge server always
+                 redirects here after the code exchange (main.py's
+                 _DISCORD_CALLBACK_DEEP_LINK is a fixed constant, not
+                 per-client-configurable), matching the exact scheme/host
+                 Lumisound's iOS build also registers. See
+                 DiscordVerificationScreen/DiscordVerificationViewModel. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lumisound" android:host="discord-verify" />
+            </intent-filter>
+
+            <!-- Discord OAuth2 SIGN-IN callback: distinct deep link from the
+                 linking flow above. The bridge distinguishes "sign in with
+                 Discord" from "link Discord to my account" by decoding the
+                 OAuth state token, and redirects to a different deep link
+                 per purpose (main.py's _DISCORD_LOGIN_CALLBACK_DEEP_LINK vs.
+                 _DISCORD_CALLBACK_DEEP_LINK). See BridgeSettingsViewModel's
+                 startDiscordSignIn()/DiscordLoginEvents. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lumisound" android:host="discord-login" />
+            </intent-filter>
         </activity>
         
         <activity
             android:name=".ui.NowPlayingActivity"
             android:exported="false"
-            android:theme="@style/Theme.StashWavePlayer" />
+            android:theme="@style/Theme.StashOpusPlayer" />
 
         <activity
             android:name=".ui.QueueActivity"
             android:exported="false"
-            android:theme="@style/Theme.StashWavePlayer" />
+            android:theme="@style/Theme.StashOpusPlayer" />
 
         <activity
             android:name=".ui.MetadataActivity"
             android:exported="false"
-            android:theme="@style/Theme.StashWavePlayer" />
+            android:theme="@style/Theme.StashOpusPlayer" />
         
         <activity
             android:name=".ui.YouTubeStreamingActivity"
             android:exported="false"
             android:configChanges="keyboardHidden|orientation|screenSize"
-            android:theme="@style/Theme.StashWavePlayer" />
+            android:theme="@style/Theme.StashOpusPlayer" />
         
         <service
             android:name=".service.MusicService"

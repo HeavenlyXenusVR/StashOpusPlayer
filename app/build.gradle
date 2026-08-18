@@ -3,6 +3,7 @@ plugins {
     id 'kotlin-android'
     id 'kotlin-parcelize'
     id 'org.jetbrains.kotlin.kapt'
+    id 'dagger.hilt.android.plugin'
 }
 
 // Enable Google Play publishing plugin
@@ -116,8 +117,18 @@ android {
     buildFeatures {
         viewBinding true
         buildConfig true
+        compose true
     }
-    
+
+    // Compose Compiler <-> Kotlin version pin: this project is on Kotlin 1.9.10
+    // (see buildscript above), which requires EXACTLY Compose Compiler 1.5.3 per
+    // Google's compatibility map (https://developer.android.com/jetpack/androidx/releases/compose-kotlin) --
+    // any other compiler version fails the build outright, it isn't a "pick a
+    // recent one" situation.
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.3'
+    }
+
     lint {
         abortOnError false
         checkReleaseBuilds false
@@ -151,6 +162,10 @@ play {
 }
 
 dependencies {
+    // Lua scripting engine (theme presets, ported from Lumisound's LuaSwift-based
+    // engine — see ui/appearance/lua/LuaThemeEngine.kt). Pure-Java implementation,
+    // no NDK/native component, so it runs on Android exactly as-is.
+    implementation 'org.luaj:luaj-jse:3.0.1'
     // Glide transformations for blurred backdrops, etc.
     implementation 'jp.wasabeef:glide-transformations:4.3.0'
     // MP3 tag editing (used for embedding artwork into MP3 files)
@@ -187,7 +202,41 @@ dependencies {
 
     // Networking for online artwork
     implementation 'com.squareup.okhttp3:okhttp:4.11.0'
-    
+
+    // Jetpack DataStore (Preferences) — used by bridge/BridgeConfig.kt to persist
+    // the self-hosted Lumisound bridge server's base URL / API key.
+    implementation 'androidx.datastore:datastore-preferences:1.0.0'
+
+    // EncryptedSharedPreferences — used by bridge/BridgeTokenStore.kt to store the
+    // bridge login JWT. 1.1.0-alpha06 is the long-standing de-facto stable release
+    // of this library (androidx.security:security-crypto has not shipped a
+    // non-alpha version) and is what production apps use in practice.
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+
+    // BiometricPrompt — used by security/AppLockManager.kt for the App Lock
+    // Settings toggle (fingerprint/face re-auth on app resume).
+    implementation 'androidx.biometric:biometric:1.1.0'
+
+    // ZXing core — used by BridgeSettingsViewModel's Two-Factor Auth setup
+    // to render the otpauth:// URI as a scannable QR code. `core` only (not
+    // `zxing-android-embedded`): no camera/scanning needed here, just the
+    // QRCodeWriter encoder, so the lighter dependency is enough.
+    implementation 'com.google.zxing:core:3.5.3'
+
+    // Jetpack Compose (new screens only -- Library/Now Playing/Settings fragments
+    // stay View/XML for now, migrated incrementally in later work). BOM version
+    // must stay compatible with the pinned Compose Compiler 1.5.3 above.
+    implementation platform('androidx.compose:compose-bom:2023.10.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
+    // hiltViewModel() for Compose screens
+    implementation 'androidx.hilt:hilt-navigation-compose:1.1.0'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+
     // YouTube Data API and video downloading
     implementation 'com.google.apis:google-api-services-youtube:v3-rev20220719-2.0.0'
     implementation 'com.google.api-client:google-api-client-android:2.0.0'
@@ -225,11 +274,18 @@ dependencies {
     
     // Fragment
     implementation 'androidx.fragment:fragment-ktx:1.6.2'
-    
+
+    // Chrome Custom Tabs -- Discord OAuth2 verification's authorize-url step
+    implementation 'androidx.browser:browser:1.8.0'
+
     // Room database
     implementation 'androidx.room:room-runtime:2.6.1'
     implementation 'androidx.room:room-ktx:2.6.1'
     kapt 'androidx.room:room-compiler:2.6.1'
+
+    // Hilt dependency injection
+    implementation 'com.google.dagger:hilt-android:2.50'
+    kapt 'com.google.dagger:hilt-android-compiler:2.50'
     
     // Lifecycle components
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'

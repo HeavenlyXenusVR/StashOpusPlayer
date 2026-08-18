@@ -15,12 +15,12 @@ class MetadataActivity : AppCompatActivity() {
     }
 
     private fun populate() {
-        val mgr = (application as com.stash.opusplayer.StashWaveApplication).playerManager
+        val mgr = (application as com.stash.opusplayer.StashOpusApplication).playerManager
         val current = mgr.currentSong.value
         if (current != null) {
             setText(R.id.fileNameValue, java.io.File(current.path).name)
             setText(R.id.pathValue, current.path)
-            setText(R.id.durationValue, "Duration: ${formatTime(current.duration)}")
+            setText(R.id.durationValue, formatTime(current.duration))
         }
         lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -32,9 +32,9 @@ class MetadataActivity : AppCompatActivity() {
                 }
                 if (metadata != null) {
                     launch(kotlinx.coroutines.Dispatchers.Main) {
-                        setText(R.id.bitrateValue, if (metadata.bitrate > 0) "Bitrate: ${metadata.bitrate / 1000} kbps" else "Bitrate: Unknown")
-                        setText(R.id.sampleRateValue, if (metadata.sampleRate > 0) "Sample rate: ${metadata.sampleRate} Hz" else "Sample rate: Unknown")
-                        setText(R.id.formatValue, if (metadata.format.isNotBlank()) "Format: ${metadata.format}" else "Format: Unknown")
+                        setText(R.id.bitrateValue, if (metadata.bitrate > 0) "${metadata.bitrate / 1000} kbps" else "Unknown")
+                        setText(R.id.sampleRateValue, if (metadata.sampleRate > 0) "${metadata.sampleRate} Hz" else "Unknown")
+                        setText(R.id.formatValue, if (metadata.format.isNotBlank()) metadata.format else "Unknown")
                     }
                 }
             } catch (_: Exception) {}

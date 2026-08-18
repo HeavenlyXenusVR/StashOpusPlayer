@@ -36,6 +36,7 @@ import androidx.core.os.bundleOf
 import com.stash.opusplayer.utils.MetadataExtractor
 import com.stash.opusplayer.utils.AnimationUtils
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 class NowPlayingActivity : AppCompatActivity() {
@@ -253,6 +254,8 @@ class NowPlayingActivity : AppCompatActivity() {
                     R.id.action_choose_layout_theme -> { showLayoutThemePicker(); true }
                     R.id.action_share -> { shareCurrentTrack(); true }
                     R.id.action_embed_artwork -> { embedArtworkIntoFile(); true }
+                    R.id.action_make_clip -> { showMakeClipDialog(); true }
+                    R.id.action_identify_track -> { identifyCurrentTrack(); true }
                     R.id.action_toggle_crossfade -> {
                         // Quick toggle
                         val prefs = getSharedPreferences("settings", 0)
@@ -286,6 +289,14 @@ class NowPlayingActivity : AppCompatActivity() {
                     }
                     R.id.action_sleep_timer -> {
                         showSleepTimerDialog()
+                        true
+                    }
+                    R.id.action_send_to_device -> {
+                        showSendToDeviceDialog()
+                        true
+                    }
+                    R.id.action_restore_synced_queue -> {
+                        restoreSyncedQueue()
                         true
                     }
                     R.id.action_go_to_album -> {
@@ -715,6 +726,63 @@ val repository = com.stash.opusplayer.data.MusicRepository(this@NowPlayingActivi
             .show()
     }
 
+    /**
+     * Ported from `TransferPlaybackSheet.swift`. Android has no push-token
+     * registration (see [com.stash.opusplayer.bridge.api.DevicesApi]'s doc
+     * comment), so the device list here can only ever show OTHER devices --
+     * this is send-only, matching that comment's scope note.
+     */
+    private fun showSendToDeviceDialog() {
+        val song = currentSong ?: run { showVisualFeedback("Nothing is playing"); return }
+        lifecycleScope.launch {
+            val devices = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.stash.opusplayer.bridge.PlaybackTransferService.fetchOtherDevices(this@NowPlayingActivity)
+            }
+            if (devices.isEmpty()) {
+                showVisualFeedback("No other devices found. Sign in on another device with push notifications enabled.")
+                return@launch
+            }
+            val labels = devices.map { d ->
+                d.deviceName?.takeIf { it.isNotBlank() } ?: (d.platform?.replaceFirstChar { c -> c.uppercase() } ?: "Unknown device")
+            }.toTypedArray()
+            androidx.appcompat.app.AlertDialog.Builder(this@NowPlayingActivity)
+                .setTitle("Send to Device")
+                .setItems(labels) { dialog, which ->
+                    val device = devices[which]
+                    val position = (mediaController?.currentPosition ?: 0L) / 1000.0
+                    val playing = mediaController?.isPlaying == true
+                    lifecycleScope.launch {
+                        val ok = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            com.stash.opusplayer.bridge.PlaybackTransferService.transferPlayback(
+                                this@NowPlayingActivity, song, position, playing, device.deviceToken
+                            )
+                        }
+                        showVisualFeedback(if (ok) "Sent to ${labels[which]}" else "Couldn't send playback -- try again")
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    /** Ported from `AccountService+QueueSync.swift`'s `fetchQueue`. Replaces the current queue outright -- no merge, matching the Swift original. */
+    private fun restoreSyncedQueue() {
+        lifecycleScope.launch {
+            val librarySongs = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.stash.opusplayer.data.MusicRepository(this@NowPlayingActivity).getAllSongsFromAllSourcesFast()
+            }
+            val queue = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.stash.opusplayer.bridge.QueueSyncService.fetchQueue(this@NowPlayingActivity, librarySongs)
+            }
+            if (queue.isEmpty()) {
+                showVisualFeedback("No synced queue found")
+                return@launch
+            }
+            musicPlayerManager?.playQueue(queue, 0)
+            showVisualFeedback("Restored ${queue.size} track(s) from synced queue")
+        }
+    }
+
     private fun sendSleepTimerCommand(durationMs: Long) {
         try {
             val extras = android.os.Bundle().apply { putLong("duration_ms", durationMs) }
@@ -807,6 +875,167 @@ else -> com.stash.opusplayer.utils.TagEditor.embedArtworkAny(this@NowPlayingActi
         }
     }
 
+    /**
+     * Ported from Lumisound's ClipMakerView/ClipExportService -- a plain
+     * two-thumb range picker (matching the Swift original's own "plain
+     * sliders, not a waveform scrubber" choice), built programmatically
+     * rather than a new XML layout since this codebase already establishes
+     * that convention for [com.google.android.material.slider.Slider] in
+     * SettingsUi.kt and there's no RangeSlider XML precedent to follow.
+     */
+    private fun showMakeClipDialog() {
+        val song = currentSong ?: return
+        val durationMs = song.duration
+        if (durationMs <= 1000L) {
+            showVisualFeedback("Track is too short to clip")
+            return
+        }
+
+        val maxClipMs = 60_000L
+        val defaultEndMs = minOf(durationMs, 30_000L)
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        val rangeLabel = android.widget.TextView(this)
+        container.addView(rangeLabel)
+
+        val rangeSlider = com.google.android.material.slider.RangeSlider(this).apply {
+            valueFrom = 0f
+            valueTo = durationMs.toFloat()
+            stepSize = 1000f
+            values = listOf(0f, defaultEndMs.toFloat())
+        }
+        container.addView(rangeSlider)
+
+        fun formatClipMs(ms: Long): String {
+            val totalSeconds = ms / 1000
+            return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
+        }
+        fun updateLabel() {
+            val values = rangeSlider.values
+            val start = values[0].toLong()
+            val end = values[1].toLong()
+            rangeLabel.text = "Clip: ${formatClipMs(start)} - ${formatClipMs(end)} (${end - start} ms)"
+        }
+        updateLabel()
+
+        rangeSlider.addOnChangeListener { slider, _, fromUser ->
+            if (!fromUser) return@addOnChangeListener
+            val values = slider.values.toMutableList()
+            // Live-clamp the span to maxClipMs, matching Lumisound's
+            // mutually-clamped Start/End sliders rather than only
+            // validating at export time.
+            if (values[1] - values[0] > maxClipMs) {
+                values[1] = (values[0] + maxClipMs).coerceAtMost(durationMs.toFloat())
+                slider.values = values
+            }
+            updateLabel()
+        }
+
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Make Clip")
+            .setView(container)
+            .setPositiveButton("Export & Share") { _, _ ->
+                val values = rangeSlider.values
+                exportAndShareClip(song, values[0].toLong(), values[1].toLong())
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun exportAndShareClip(song: com.stash.opusplayer.data.Song, startMs: Long, endMs: Long) {
+        showVisualFeedback("Exporting clip...")
+        lifecycleScope.launch {
+            val file = try {
+                com.stash.opusplayer.clip.ClipExportService.exportClip(
+                    this@NowPlayingActivity, song.path, startMs, endMs, song.title
+                )
+            } catch (e: Exception) {
+                null
+            }
+            if (file == null) {
+                showVisualFeedback("Couldn't export clip -- it may be protected or unreadable")
+                return@launch
+            }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this@NowPlayingActivity, "$packageName.fileprovider", file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "audio/mp4"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Share clip"))
+        }
+    }
+
+    /**
+     * Ported from Lumisound's AcoustIDService/NameThatTuneView -- identifies
+     * a mistagged/unlabeled local track by uploading a trimmed clip to the
+     * shared bridge's AcoustID proxy. Requires being signed in (Settings ->
+     * Account & Server): the same account works here as on Lumisound, and
+     * the bridge needs a user-configured AcoustID API key to actually run
+     * the lookup (a 400 from the server surfaces that requirement directly).
+     */
+    private fun identifyCurrentTrack() {
+        val song = currentSong ?: return
+        val progressDialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Identify Track")
+            .setMessage("Analyzing \"${song.displayName}\"...")
+            .setCancelable(false)
+            .show()
+
+        lifecycleScope.launch {
+            val outcome = try {
+                Result.success(
+                    com.stash.opusplayer.identify.AcoustIdService.identify(
+                        this@NowPlayingActivity, song.path, song.duration, song.title
+                    )
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            progressDialog.dismiss()
+
+            outcome.fold(
+                onSuccess = { match ->
+                    val details = buildString {
+                        append("Title: ${match.title}")
+                        match.artist?.let { append("\nArtist: $it") }
+                        match.album?.let { append("\nAlbum: $it") }
+                        append("\nConfidence: ${(match.score * 100).toInt()}%")
+                    }
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@NowPlayingActivity)
+                        .setTitle("Match Found")
+                        .setMessage(details)
+                        .setPositiveButton("OK", null)
+                        .show()
+                },
+                onFailure = { error ->
+                    val message = when (error) {
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.NotLoggedIn ->
+                            "Sign in first (Settings -> Account & Server)."
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.TrimFailed ->
+                            "Couldn't read this track's audio."
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.NotMatched ->
+                            "No match found for this track."
+                        is com.stash.opusplayer.identify.AcoustIdService.IdentifyError.Server ->
+                            error.detail
+                        else -> "Something went wrong."
+                    }
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@NowPlayingActivity)
+                        .setTitle("Couldn't Identify Track")
+                        .setMessage(message)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            )
+        }
+    }
+
     private fun setupAlbumArtworkSeek() {
         binding.albumArtwork.setOnTouchListener { view, event ->
             if (event.action == android.view.MotionEvent.ACTION_UP) {
@@ -869,7 +1098,7 @@ else -> com.stash.opusplayer.utils.TagEditor.embedArtworkAny(this@NowPlayingActi
     }
     
     private fun setupPlayerManager() {
-        musicPlayerManager = (application as com.stash.opusplayer.StashWaveApplication).playerManager
+        musicPlayerManager = (application as com.stash.opusplayer.StashOpusApplication).playerManager
         
         // Observe player state changes (shared manager)
         lifecycleScope.launch {
@@ -1390,13 +1619,6 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
                 ColorUtils.blendARGB(rawAccent, prefs.textPrimaryColor, 0.12f)
             else -> rawAccent
         }
-        val surface = when (currentLayoutTheme) {
-            com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.VINYL ->
-                ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.24f)
-            com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.MINIMAL ->
-                ColorUtils.blendARGB(prefs.primaryColor, accent, 0.18f)
-            else -> ColorUtils.blendARGB(prefs.primaryColor, accent, 0.26f)
-        }
         val elevated = when (currentLayoutTheme) {
             com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.VINYL ->
                 ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.14f)
@@ -1404,18 +1626,22 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
                 ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.1f)
             else -> ColorUtils.blendARGB(prefs.backgroundColor, accent, 0.18f)
         }
-        val cardSurface = when (currentLayoutTheme) {
-            com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.MINIMAL ->
-                ColorUtils.blendARGB(surface, prefs.backgroundColor, 0.22f)
-            else -> ColorUtils.blendARGB(surface, prefs.backgroundColor, 0.35f)
-        }
         val chipTint = ColorUtils.blendARGB(accent, prefs.backgroundColor, if (currentLayoutTheme == com.stash.opusplayer.ui.appearance.NowPlayingLayoutTheme.MINIMAL) 0.42f else 0.55f)
-        val subtleButtonTint = ColorUtils.blendARGB(cardSurface, prefs.backgroundColor, 0.25f)
 
-        binding.songInfoCard.setCardBackgroundColor(surface)
-        binding.progressCard.setCardBackgroundColor(cardSurface)
-        binding.controlsCard.setCardBackgroundColor(cardSurface)
-        binding.secondaryActionsCard.setCardBackgroundColor(cardSurface)
+        // YouTube-Music-style flat layout: panels blend straight into the
+        // screen background instead of sitting in bordered, distinctly-
+        // colored "boxed panel" cards -- only the album art card and the
+        // metadata detail overlay keep a visually distinct surface, since
+        // those are the two places a raised panel still reads as
+        // intentional (artwork frame, modal-like detail panel).
+        binding.songInfoCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.songInfoCard.strokeWidth = 0
+        binding.progressCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.progressCard.strokeWidth = 0
+        binding.controlsCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.controlsCard.strokeWidth = 0
+        binding.secondaryActionsCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.secondaryActionsCard.strokeWidth = 0
         binding.metadataContainer.setCardBackgroundColor(elevated)
         binding.albumArtCard.setCardBackgroundColor(ColorUtils.blendARGB(accent, prefs.backgroundColor, 0.28f))
         binding.layoutThemeBadge.text = currentLayoutTheme.displayName
@@ -1429,8 +1655,11 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
         binding.vinylGrooveOverlay.background.mutate().setTint(ColorUtils.setAlphaComponent(accent, 170))
         binding.vinylSpindleView.background.mutate().setTint(ColorUtils.blendARGB(accent, prefs.textPrimaryColor, 0.34f))
 
+        // Plain icon buttons (no colored chip backgrounds) -- YouTube Music's
+        // now-playing transport row is icons directly on the background,
+        // with only the play/pause button as a filled circle.
         listOf(binding.backButton, binding.menuButton, binding.shuffleButton, binding.repeatButton, binding.previousButton, binding.nextButton, binding.favoriteButton, binding.queueButton, binding.fastForwardButton, binding.metadataButton, binding.metadataBackButton).forEach { button ->
-            button.backgroundTintList = ColorStateList.valueOf(subtleButtonTint)
+            button.backgroundTintList = ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
             button.imageTintList = ColorStateList.valueOf(prefs.textPrimaryColor)
         }
         binding.playPauseButton.backgroundTintList = ColorStateList.valueOf(accent)
@@ -1534,7 +1763,7 @@ val fetcher = com.stash.opusplayer.artwork.OnlineArtworkFetcher(this@NowPlayingA
     }
     
     private fun showQueueDialog() {
-        val mgr = (application as? com.stash.opusplayer.StashWaveApplication)?.playerManager
+        val mgr = (application as? com.stash.opusplayer.StashOpusApplication)?.playerManager
         val list = mgr?.playlist?.value ?: emptyList()
         if (list.isEmpty()) {
             showVisualFeedback("Queue is empty")

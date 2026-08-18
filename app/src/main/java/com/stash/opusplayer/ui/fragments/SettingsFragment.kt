@@ -14,8 +14,35 @@ import com.stash.opusplayer.R
 import com.stash.opusplayer.ui.MainActivity
 import com.stash.opusplayer.ui.appearance.AppearanceFragment
 import com.stash.opusplayer.ui.customization.VisualCustomizationFragment
+import com.stash.opusplayer.ui.fragments.settings.AchievementsFragment
+import com.stash.opusplayer.ui.fragments.settings.AcoustIdApiKeyFragment
+import com.stash.opusplayer.ui.fragments.settings.BackupHistoryFragment
+import com.stash.opusplayer.ui.fragments.settings.BlockedUsersFragment
+import com.stash.opusplayer.ui.fragments.settings.BridgeAccountFragment
+import com.stash.opusplayer.ui.fragments.settings.CloudPlaylistsFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscordRpcFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscordVerificationFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscordWebhookFragment
+import com.stash.opusplayer.ui.fragments.settings.DiscoveryFragment
+import com.stash.opusplayer.ui.fragments.settings.FolderBackupFragment
+import com.stash.opusplayer.ui.fragments.settings.FriendActivityFragment
+import com.stash.opusplayer.ui.fragments.settings.FriendsHostFragment
+import com.stash.opusplayer.ui.fragments.settings.HelpFragment
+import com.stash.opusplayer.ui.fragments.settings.LibraryMaintenanceFragment
 import com.stash.opusplayer.ui.fragments.settings.LibrarySettingsFragment
+import com.stash.opusplayer.ui.fragments.settings.ListeningHeatmapFragment
+import com.stash.opusplayer.ui.fragments.settings.MoodPlaylistsFragment
+import com.stash.opusplayer.ui.fragments.settings.ScrobblingFragment
+import com.stash.opusplayer.ui.fragments.settings.TempoAnalyzerFragment
+import com.stash.opusplayer.ui.fragments.settings.PodcastsFragment
+import com.stash.opusplayer.security.AppLockManager
+import com.stash.opusplayer.ui.fragments.settings.RewindFragment
+import com.stash.opusplayer.ui.fragments.settings.StreamingBrowseHostFragment
+import com.stash.opusplayer.ui.fragments.settings.SubscriptionsFragment
+import com.stash.opusplayer.ui.fragments.settings.YoutubeApiKeyFragment
+import com.stash.opusplayer.ui.fragments.settings.YtdlpCookiesFragment
 import com.stash.opusplayer.ui.fragments.settings.PlaybackSettingsFragment
+import com.stash.opusplayer.ui.fragments.settings.SmartPlaylistsFragment
 import com.stash.opusplayer.ui.fragments.settings.StreamingSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.addActionButton
 import com.stash.opusplayer.ui.fragments.settings.addBodyText
@@ -43,6 +70,8 @@ class SettingsFragment : Fragment() {
 
         buildQuickActions(content)
         buildCoreNavigation(content)
+        buildPrivacyControls(content)
+        buildHelpControls(content)
         buildUpdateControls(content)
 
         return scrollView
@@ -123,10 +152,256 @@ class SettingsFragment : Fragment() {
 
         addSettingsTile(
             section,
+            title = "Library Maintenance",
+            summary = "Find and delete corrupt audio files, and restore anything recently moved to trash."
+        ) {
+            openSettingsScreen(LibraryMaintenanceFragment(), "Library Maintenance")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Tempo (BPM)",
+            summary = "On-device tempo detection -- powers Mood Playlists' BPM tier."
+        ) {
+            openSettingsScreen(TempoAnalyzerFragment(), "Tempo (BPM)")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Mood Playlists",
+            summary = "Energetic, Chill, Focus, and Sleep -- auto-grouped from your library."
+        ) {
+            openSettingsScreen(MoodPlaylistsFragment(), "Mood Playlists")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Smart Playlists",
+            summary = "Lua-scripted rules that decide playlist membership from the current library."
+        ) {
+            openSettingsScreen(SmartPlaylistsFragment(), "Smart Playlists")
+        }
+
+        addSettingsTile(
+            section,
             title = "Streaming & Downloads",
             summary = "YouTube API key, Lavalink routing, extractor health, and yt-dlp updates."
         ) {
             openSettingsScreen(StreamingSettingsFragment(), "Streaming & Downloads")
+        }
+
+        addSettingsTile(
+            section,
+            title = "yt-dlp Cookies",
+            summary = "Upload your own YouTube session cookies to unlock age-restricted or login-required videos."
+        ) {
+            openSettingsScreen(YtdlpCookiesFragment(), "yt-dlp Cookies")
+        }
+
+        addSettingsTile(
+            section,
+            title = "YouTube API Key",
+            summary = "Use your own YouTube Data API key so full playlists resolve without a cap."
+        ) {
+            openSettingsScreen(YoutubeApiKeyFragment(), "YouTube API Key")
+        }
+
+        addSettingsTile(
+            section,
+            title = "AcoustID API Key",
+            summary = "Use your own free AcoustID key to enable Identify Track fingerprint lookups."
+        ) {
+            openSettingsScreen(AcoustIdApiKeyFragment(), "AcoustID API Key")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Account & Server",
+            summary = "Sign in with the same account you use on Lumisound -- both apps talk to the same server."
+        ) {
+            openSettingsScreen(BridgeAccountFragment(), "Account & Server")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discord Webhook",
+            summary = "Post a \"Now Playing\" message to a Discord channel whenever you start a track."
+        ) {
+            openSettingsScreen(DiscordWebhookFragment(), "Discord Webhook")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discord Verification",
+            summary = "Prove you own a specific Discord account -- separate from the Now Playing webhook."
+        ) {
+            openSettingsScreen(DiscordVerificationFragment(), "Discord Verification")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discord Rich Presence",
+            summary = "Show what you're playing as your Discord status, via a small desktop program you install separately."
+        ) {
+            openSettingsScreen(DiscordRpcFragment(), "Discord Rich Presence")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Scrobbling",
+            summary = "Link Last.fm, Libre.fm, or ListenBrainz -- scrobbles happen automatically once linked."
+        ) {
+            openSettingsScreen(ScrobblingFragment(), "Scrobbling")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Achievements",
+            summary = "Badges, streaks, and listening stats -- shared with Lumisound."
+        ) {
+            openSettingsScreen(AchievementsFragment(), "Achievements")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Discover",
+            summary = "Discover Mix (new tracks based on your top artists) and On This Day (what you played on this date in past years)."
+        ) {
+            openSettingsScreen(DiscoveryFragment(), "Discover")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Cloud Playlists",
+            summary = "Browse playlists synced to your account and playlists shared with you -- manage collaborators, shared with Lumisound."
+        ) {
+            openSettingsScreen(CloudPlaylistsFragment(), "Cloud Playlists")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Folder Backups",
+            summary = "A record of what was in each watched folder, pushed automatically -- shared with Lumisound."
+        ) {
+            openSettingsScreen(FolderBackupFragment(), "Folder Backups")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Backup History",
+            summary = "Restore favorites and playlists from an automatic snapshot -- shared with Lumisound."
+        ) {
+            openSettingsScreen(BackupHistoryFragment(), "Backup History")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Friends",
+            summary = "Friend requests and presence, shared with your Lumisound account."
+        ) {
+            openSettingsScreen(FriendsHostFragment(), "Friends")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Friend Activity",
+            summary = "Most-active leaderboard and a recent-plays feed from your friends."
+        ) {
+            openSettingsScreen(FriendActivityFragment(), "Friend Activity")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Blocked Users",
+            summary = "Manage who you've blocked -- blocking hides profiles and removes any friendship in both directions."
+        ) {
+            openSettingsScreen(BlockedUsersFragment(), "Blocked Users")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Browse & Stream",
+            summary = "Browse and stream from the bridge server."
+        ) {
+            openSettingsScreen(StreamingBrowseHostFragment(), "Browse & Stream")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Subscriptions",
+            summary = "Follow YouTube channels and get notified of new uploads -- shared with Lumisound."
+        ) {
+            openSettingsScreen(SubscriptionsFragment(), "Subscriptions")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Podcasts",
+            summary = "Subscribe to RSS feeds and play episodes -- shared with Lumisound."
+        ) {
+            openSettingsScreen(PodcastsFragment(), "Podcasts")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Rewind",
+            summary = "Your all-time, monthly, and yearly listening recap."
+        ) {
+            openSettingsScreen(RewindFragment(), "Rewind")
+        }
+
+        addSettingsTile(
+            section,
+            title = "Listening Heatmap",
+            summary = "A calendar view of how much you've listened each day."
+        ) {
+            openSettingsScreen(ListeningHeatmapFragment(), "Listening Heatmap")
+        }
+    }
+
+    private fun buildPrivacyControls(parent: LinearLayout) {
+        val section = addSettingsSection(
+            parent,
+            "Privacy",
+            "Local device security -- ported from Lumisound's App Lock setting."
+        )
+
+        val appLockSwitch = addSwitchControl(
+            section,
+            title = "App Lock",
+            summary = "Require fingerprint or face unlock whenever the app is reopened from the background.",
+            checked = AppLockManager.isEnabled(requireContext())
+        ) { enabled ->
+            if (enabled && !AppLockManager.isBiometricAvailable(requireContext())) {
+                Toast.makeText(
+                    requireContext(),
+                    "No fingerprint or face unlock is set up on this device. Add one in your device's security settings first.",
+                    Toast.LENGTH_LONG
+                ).show()
+                AppLockManager.setEnabled(requireContext(), false)
+            } else {
+                AppLockManager.setEnabled(requireContext(), enabled)
+            }
+            com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
+        }
+        if (!AppLockManager.isBiometricAvailable(requireContext())) {
+            appLockSwitch.isChecked = false
+        }
+    }
+
+    private fun buildHelpControls(parent: LinearLayout) {
+        val section = addSettingsSection(
+            parent,
+            "Help",
+            "A categorized guide to what this app can do, ported from Lumisound's own Help & Feature Guide."
+        )
+
+        addSettingsTile(
+            section,
+            title = "Help & Feature Guide",
+            summary = "Browse what every feature does, organized by category."
+        ) {
+            openSettingsScreen(HelpFragment(), "Help & Feature Guide")
         }
     }
 

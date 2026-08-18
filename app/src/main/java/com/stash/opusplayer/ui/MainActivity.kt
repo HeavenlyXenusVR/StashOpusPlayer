@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.ActionBarDrawerToggle
@@ -35,6 +36,9 @@ import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import com.stash.opusplayer.R
 import com.stash.opusplayer.databinding.ActivityMainBinding
+import com.stash.opusplayer.bridge.DiscordLoginEvents
+import com.stash.opusplayer.bridge.DiscordLoginOutcome
+import com.stash.opusplayer.security.AppLockManager
 import com.stash.opusplayer.ui.fragments.MusicLibraryFragment
 import com.stash.opusplayer.ui.fragments.EqualizerFragment
 import com.stash.opusplayer.ui.fragments.SettingsFragment
@@ -57,6 +61,7 @@ import com.stash.opusplayer.utils.UIPerformanceOptimizer
 import com.stash.opusplayer.utils.AnimationDurationManager
 import com.stash.opusplayer.utils.AnimationUtils
 
+@dagger.hilt.android.AndroidEntryPoint
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
     
     private lateinit var binding: ActivityMainBinding
@@ -67,7 +72,17 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private lateinit var miniPlayerView: MiniPlayerSurface
     private lateinit var miniPlayerToggleManager: MiniPlayerToggleManager
     private var currentMiniPlayerStyle: String? = null
-    
+
+    // App Lock
+    private var wentToBackground = false
+    private var appLockOverlay: View? = null
+
+    @javax.inject.Inject
+    lateinit var discordLoginEvents: DiscordLoginEvents
+
+    @javax.inject.Inject
+    lateinit var settingsSyncManager: com.stash.opusplayer.bridge.SettingsSyncManager
+
     // Appearance customization
     private var appearanceReceiver: BroadcastReceiver? = null
     private lateinit var visualCustomizationManager: VisualCustomizationManager
@@ -79,7 +94,28 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     ) { uri ->
         uri?.let { setBackgroundImage(it) }
     }
-    
+
+    private var pendingMediaDeleteCallback: ((Boolean) -> Unit)? = null
+    private var pendingMediaDeleteUri: Uri? = null
+
+    private val mediaDeleteLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val callback = pendingMediaDeleteCallback
+        val uri = pendingMediaDeleteUri
+        pendingMediaDeleteCallback = null
+        pendingMediaDeleteUri = null
+        val granted = result.resultCode == android.app.Activity.RESULT_OK
+        if (granted && uri != null && Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            // API 29's consent dialog only grants permission -- the delete call itself has to
+            // be reissued now that it will actually succeed instead of throwing again.
+            val rows = runCatching { contentResolver.delete(uri, null, null) }.getOrDefault(0)
+            callback?.invoke(rows > 0)
+        } else {
+            callback?.invoke(granted)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Start performance tracking
         UIPerformanceOptimizer.startPerformanceTracking("MainActivity.onCreate")
@@ -121,6 +157,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         setupBottomNavigation()
         checkPermissionsAndSetup()
         requestNotificationPermissionIfNeeded()
+        handleDiscordVerifyDeepLink(intent)
+        handleDiscordLoginDeepLink(intent)
+        settingsSyncManager.pullOnce()
 
         // Observe image download tracker to show top banner
         lifecycleScope.launch {
@@ -181,7 +220,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         // Handle back button press
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                if (appLockOverlay != null) {
+                    moveTaskToBack(true)
+                } else if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
                     finish()
@@ -198,6 +239,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     override fun onStop() {
         super.onStop()
         unregisterAppearanceReceiver()
+        if (AppLockManager.isEnabled(this)) {
+            wentToBackground = true
+        }
     }
     
     override fun onTrimMemory(level: Int) {
@@ -514,8 +558,55 @@ Check for updates anytime from Settings.""")
         hideLoadingOverlay()
     }
 
+    /**
+     * Handles the `lumisound://discord-verify` redirect the bridge server
+     * always sends the Chrome Custom Tab back to once the Discord OAuth2
+     * code exchange finishes (see the manifest's intent-filter and
+     * DiscordVerificationApi's KDoc for why that fixed scheme/host, not a
+     * Stash-specific one). Just surfaces a Toast -- the actual verified
+     * state comes from DiscordVerificationScreen re-fetching
+     * GET /api/discord/verification on its own resume, not from anything
+     * signaled here.
+     */
+    private fun handleDiscordVerifyDeepLink(intent: Intent) {
+        val data = intent.data ?: return
+        if (data.scheme != "lumisound" || data.host != "discord-verify") return
+        val success = data.getQueryParameter("success") == "true"
+        if (success) {
+            Toast.makeText(this, "Discord account linked", Toast.LENGTH_SHORT).show()
+        } else {
+            val reason = data.getQueryParameter("reason")
+            val message = when (reason) {
+                "already_linked_elsewhere" -> "That Discord account is already linked to a different account."
+                "expired_state", "exchange_failed", "invalid_response" -> "Discord verification failed -- try again."
+                else -> "Discord verification was cancelled."
+            }
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun handleDiscordLoginDeepLink(intent: Intent) {
+        val data = intent.data ?: return
+        if (data.scheme != "lumisound" || data.host != "discord-login") return
+        val success = data.getQueryParameter("success") == "true"
+        if (!success) {
+            val reason = data.getQueryParameter("reason")
+            lifecycleScope.launch { discordLoginEvents.emit(DiscordLoginOutcome.Failed(reason)) }
+            return
+        }
+        if (data.getQueryParameter("requires_2fa") == "true") {
+            val pendingToken = data.getQueryParameter("pending_token") ?: return
+            lifecycleScope.launch { discordLoginEvents.emit(DiscordLoginOutcome.RequiresTwoFactor(pendingToken)) }
+            return
+        }
+        val token = data.getQueryParameter("token") ?: return
+        lifecycleScope.launch { discordLoginEvents.emit(DiscordLoginOutcome.SignedIn(token)) }
+    }
+
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        intent?.let { handleDiscordVerifyDeepLink(it) }
+        intent?.let { handleDiscordLoginDeepLink(it) }
         when (intent?.action) {
             "com.stash.opusplayer.ACTION_JUMP_TO_SOURCE" -> jumpToLastPlaybackSource()
             "com.stash.opusplayer.ACTION_GO_TO_ARTIST" -> {
@@ -541,7 +632,7 @@ Check for updates anytime from Settings.""")
                 val repo = com.stash.opusplayer.data.MusicRepository(this)
                 lifecycleScope.launch {
                     val songs = repo.getSongsInAlbum(album)
-                    val fragment = com.stash.opusplayer.ui.fragments.FolderDetailFragment.newInstance(album, ArrayList(songs))
+                    val fragment = com.stash.opusplayer.ui.fragments.FolderDetailFragment.newInstance(album, ArrayList(songs), isAlbum = true)
                     loadFragment(fragment)
                 }
             }
@@ -740,7 +831,7 @@ Check for updates anytime from Settings.""")
     }
     
     private fun setupMusicPlayer() {
-        musicPlayerManager = (application as com.stash.opusplayer.StashWaveApplication).playerManager
+        musicPlayerManager = (application as com.stash.opusplayer.StashOpusApplication).playerManager
     }
     
     private var playingBannerDismissRunnable: Runnable? = null
@@ -920,12 +1011,112 @@ val repository = com.stash.opusplayer.data.MusicRepository(this@MainActivity)
             }
         }
     }
-    
+
+    /**
+     * Requests deletion of a MediaStore-backed audio file through the correct
+     * scoped-storage flow for the running API level: a direct
+     * `ContentResolver.delete` on API < 29 (legacy storage), a
+     * `RecoverableSecurityException` catch-and-retry on API 29, and
+     * `MediaStore.createDeleteRequest`'s system confirmation dialog on API 30+.
+     * [onResult] always fires exactly once.
+     */
+    fun requestMediaDelete(uri: Uri, onResult: (Boolean) -> Unit) {
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(uri))
+                pendingMediaDeleteCallback = onResult
+                mediaDeleteLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+            }
+            Build.VERSION.SDK_INT == Build.VERSION_CODES.Q -> {
+                try {
+                    val rows = contentResolver.delete(uri, null, null)
+                    onResult(rows > 0)
+                } catch (e: android.app.RecoverableSecurityException) {
+                    pendingMediaDeleteCallback = onResult
+                    pendingMediaDeleteUri = uri
+                    mediaDeleteLauncher.launch(IntentSenderRequest.Builder(e.userAction.actionIntent.intentSender).build())
+                } catch (e: Exception) {
+                    onResult(false)
+                }
+            }
+            else -> {
+                val rows = runCatching { contentResolver.delete(uri, null, null) }.getOrDefault(0)
+                onResult(rows > 0)
+            }
+        }
+    }
+
+    /**
+     * Moves [song] into the in-app Recently Deleted trash: copies its bytes into
+     * app-private storage first, then only removes the original (and the song
+     * index row) once the system's own delete confirmation actually succeeds --
+     * a copy is never staged as "deleted" while the real file is still sitting
+     * in the user's library. See [com.stash.opusplayer.library.RecentlyDeletedService].
+     */
+    fun trashSong(song: com.stash.opusplayer.data.Song, onDone: (Boolean) -> Unit = {}) {
+        lifecycleScope.launch {
+            val db = com.stash.opusplayer.data.database.MusicDatabase.getDatabase(this@MainActivity)
+            val entity = db.songDao().getSongById(song.id)
+            if (entity == null) {
+                onDone(false)
+                return@launch
+            }
+            val trashFile = com.stash.opusplayer.library.RecentlyDeletedService.copyToTrash(this@MainActivity, entity)
+            if (trashFile == null) {
+                Toast.makeText(this@MainActivity, "Couldn't move \"${song.displayName}\" to trash.", Toast.LENGTH_SHORT).show()
+                onDone(false)
+                return@launch
+            }
+            val uri = com.stash.opusplayer.library.AudioFileValidator.contentUriFor(entity)
+            requestMediaDelete(uri) { deleted ->
+                lifecycleScope.launch {
+                    if (deleted) {
+                        com.stash.opusplayer.library.RecentlyDeletedService.finalize(
+                            this@MainActivity, entity, trashFile, db.recentlyDeletedDao(), db.songDao()
+                        )
+                        Toast.makeText(this@MainActivity, "\"${song.displayName}\" moved to trash.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        com.stash.opusplayer.library.RecentlyDeletedService.discard(trashFile)
+                        Toast.makeText(this@MainActivity, "Delete was cancelled.", Toast.LENGTH_SHORT).show()
+                    }
+                    onDone(deleted)
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         if (::miniPlayerView.isInitialized) {
             try { miniPlayerView.resync() } catch (_: Exception) {}
         }
+        if (wentToBackground && AppLockManager.isEnabled(this)) {
+            showAppLockOverlay()
+        }
+    }
+
+    private fun showAppLockOverlay() {
+        wentToBackground = false
+        if (appLockOverlay != null) return
+
+        val overlay = layoutInflater.inflate(R.layout.view_app_lock_overlay, binding.drawerLayout, false)
+        binding.drawerLayout.addView(overlay)
+        appLockOverlay = overlay
+
+        val promptForUnlock: () -> Unit = {
+            AppLockManager.showPrompt(
+                activity = this,
+                onSuccess = { hideAppLockOverlay() },
+                onFailure = { /* prompt dismissed/cancelled -- overlay stays up, Unlock button re-triggers it */ }
+            )
+        }
+        overlay.findViewById<View>(R.id.app_lock_unlock_button).setOnClickListener { promptForUnlock() }
+        promptForUnlock()
+    }
+
+    private fun hideAppLockOverlay() {
+        appLockOverlay?.let { binding.drawerLayout.removeView(it) }
+        appLockOverlay = null
     }
 
     override fun onDestroy() {

@@ -138,8 +138,10 @@ class MetadataScanWorker(
         try {
             Log.d(TAG, "Starting full music library metadata scan")
             
-            // Get all songs from repository (use silent version to avoid LibraryScanTracker notifications)
-            val allSongs = repository.getAllSongs()
+            // Get all songs from repository via a direct live MediaStore scan (not the cached
+            // song index) since a full metadata scan - especially forceRescan - wants the
+            // freshest MediaStore data, and uses its own lastModified-based staleness check below.
+            val allSongs = repository.scanSongsFromMediaStore()
             Log.d(TAG, "Found ${allSongs.size} songs to scan")
             
             val batch = mutableListOf<MetadataInfo>()

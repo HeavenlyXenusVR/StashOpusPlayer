@@ -12,6 +12,11 @@ import com.stash.opusplayer.data.database.PlaylistDao
 import com.stash.opusplayer.data.database.PlaylistEntity
 import com.stash.opusplayer.data.database.PlaylistTrackEntity
 import com.stash.opusplayer.data.database.PlaylistWithCount
+import com.stash.opusplayer.data.database.SmartPlaylistDao
+import com.stash.opusplayer.data.database.SmartPlaylistEntity
+import com.stash.opusplayer.data.database.SongDao
+import com.stash.opusplayer.data.database.toEntity
+import com.stash.opusplayer.data.database.toSong
 import com.stash.opusplayer.utils.MetadataExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +32,8 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
     private val favoriteDao = database.favoriteDao()
     private val playlistDao: PlaylistDao = database.playlistDao()
     val metadataDao = database.metadataDao()
+    private val songDao: SongDao = database.songDao()
+    private val smartPlaylistDao: SmartPlaylistDao = database.smartPlaylistDao()
     private val metadataExtractor = MetadataExtractor(context)
     private val prefs: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
     
@@ -42,6 +49,20 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
     }
 
     fun getPlaylistTracks(playlistId: Long): Flow<List<PlaylistTrackEntity>> = playlistDao.getTracks(playlistId)
+
+    // Smart Playlists API (Lua-scripted -- see com.stash.opusplayer.lua.LuaSmartPlaylistEngine).
+    // Unlike a regular playlist, a smart playlist stores only its rule script;
+    // its membership is computed on demand from the current song index rather
+    // than a persisted track list.
+    fun getSmartPlaylists(): Flow<List<SmartPlaylistEntity>> = smartPlaylistDao.getAll()
+
+    suspend fun createSmartPlaylist(name: String, luaScript: String): Long = withContext(Dispatchers.IO) {
+        smartPlaylistDao.insert(SmartPlaylistEntity(name = name, luaScript = luaScript))
+    }
+
+    suspend fun deleteSmartPlaylist(id: Long) = withContext(Dispatchers.IO) {
+        smartPlaylistDao.deleteById(id)
+    }
 
     suspend fun addSongToPlaylist(playlistId: Long, song: Song) = withContext(Dispatchers.IO) {
         val track = PlaylistTrackEntity(
@@ -60,7 +81,69 @@ private val aiTagger = com.stash.opusplayer.ai.AITagger(context)
         playlistDao.deleteTrackByPlaylistAndSong(playlistId, songId)
     }
 
+    /** Batch add, for mood-playlist generation and M3U import -- one DB round-trip instead of N calls to [addSongToPlaylist]. */
+    suspend fun addSongsToPlaylist(playlistId: Long, songs: List<Song>) = withContext(Dispatchers.IO) {
+        if (songs.isEmpty()) return@withContext
+        val tracks = songs.map { song ->
+            PlaylistTrackEntity(
+                playlistId = playlistId,
+                songId = song.id,
+                title = song.displayName,
+                artist = song.artistName,
+                album = song.albumName,
+                duration = song.duration,
+                path = song.path
+            )
+        }
+        playlistDao.insertTracks(tracks)
+    }
+
+    /** Creates a playlist and populates it with [songs] in one call, mirroring Lumisound's `createPlaylist(name:songIDs:)`. */
+    suspend fun createPlaylist(name: String, songs: List<Song>): Long = withContext(Dispatchers.IO) {
+        val playlistId = createPlaylist(name)
+        addSongsToPlaylist(playlistId, songs)
+        playlistId
+    }
+
+    // Persisted-index-backed replacement for the old live-MediaStore-every-call behavior.
+    // Reads the Room-backed "songs" index (populated/refreshed by LibraryScanWorker and
+    // refreshSongIndex()) instead of hitting MediaStore synchronously on every call.
+    //
+    // First-run handling: if the index hasn't been populated yet (e.g. app just installed,
+    // before the first background scan has completed), fall back to a live MediaStore scan
+    // right here and persist the result, so callers never see an empty library on first launch
+    // while still getting the fast, cached path on every call afterwards.
     suspend fun getAllSongs(): List<Song> = withContext(Dispatchers.IO) {
+        val cached = try {
+            songDao.getAllSongs()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (cached.isNotEmpty()) {
+            cached.map { it.toSong() }
+        } else {
+            refreshSongIndex()
+        }
+    }
+
+    // Forces a fresh MediaStore scan and persists the result into the song index in one shot.
+    // Used for the first-run fallback above, and by LibraryScanWorker / LibraryRescanWorker to
+    // keep the persisted index up to date (including dropping rows for songs that were removed).
+    suspend fun refreshSongIndex(): List<Song> = withContext(Dispatchers.IO) {
+        val scanned = scanSongsFromMediaStore()
+        try {
+            songDao.replaceAll(scanned.map { it.toEntity() })
+        } catch (_: Exception) {
+            // Persisting the index is best-effort; still return the freshly scanned songs.
+        }
+        scanned
+    }
+
+    // The original live MediaStore cursor query (this is what getAllSongs() used to do on
+    // every single call). Kept as its own method so the worker that populates the persisted
+    // index and the first-run fallback above can share this exact cursor-reading logic instead
+    // of duplicating it.
+    suspend fun scanSongsFromMediaStore(): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val sortOrder = "${MediaStore.Audio.Media.DISPLAY_NAME} ASC"
@@ -575,6 +658,36 @@ if (isValidAudioFile(name) || child.type?.startsWith("audio/") == true) {
                 }
             }
         }
+    }
+
+    /**
+     * One entry per watched folder (plain paths + SAF tree folders), for
+     * [com.stash.opusplayer.backup.FolderBackupService]'s push to
+     * `PUT /user/folder-backups`. Reuses the same scan paths
+     * [scanCustomFolders]/[scanDocumentTreeRecursive] already use for the
+     * library itself -- SAF tree folders are keyed by their
+     * [androidx.documentfile.provider.DocumentFile] display name (Android
+     * has no "relative to Documents" path concept to mirror iOS's
+     * `folder_path` with).
+     */
+    suspend fun getFolderBackupEntries(): List<Pair<String, List<Song>>> = withContext(Dispatchers.IO) {
+        val entries = mutableListOf<Pair<String, List<Song>>>()
+        getCustomMusicFolders().forEach { path ->
+            entries.add(path to getSongsInFolder(path))
+        }
+        getCustomMusicFolderTreeUris().forEach { uriStr ->
+            runCatching {
+                val treeUri = Uri.parse(uriStr)
+                val docTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+                if (docTree != null && docTree.isDirectory) {
+                    val label = docTree.name ?: uriStr
+                    val songs = mutableListOf<Song>()
+                    scanDocumentTreeRecursive(docTree, songs, label, label)
+                    entries.add(label to songs)
+                }
+            }
+        }
+        entries
     }
 
     // Fast path: use MediaStore to list audio under primary storage tree URIs

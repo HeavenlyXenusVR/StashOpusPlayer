@@ -1,0 +1,520 @@
+package com.stash.opusplayer.ui.compose.profile
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.stash.opusplayer.StashOpusApplication
+import com.stash.opusplayer.bridge.BridgeConfig
+import com.stash.opusplayer.bridge.BridgeStreamResolver
+import com.stash.opusplayer.bridge.BridgeTokenStore
+import com.stash.opusplayer.bridge.PlaybackRequest
+import com.stash.opusplayer.bridge.api.BridgeTrack
+import com.stash.opusplayer.bridge.api.MusicCompatibility
+import com.stash.opusplayer.bridge.api.PinnedTrack
+import com.stash.opusplayer.bridge.api.PostProfileCommentRequest
+import com.stash.opusplayer.bridge.api.ProfileComment
+import com.stash.opusplayer.bridge.api.PublicSocialProfile
+import com.stash.opusplayer.bridge.api.SetPinnedTracksRequest
+import com.stash.opusplayer.bridge.api.SocialApi
+import com.stash.opusplayer.bridge.api.SocialProfileApi
+import com.stash.opusplayer.bridge.api.SocialProfileUpdateRequest
+import com.stash.opusplayer.data.MusicRepository
+import com.stash.opusplayer.data.Song
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.ByteArrayOutputStream
+import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+
+/**
+ * Backs [PublicProfileScreen], ported from Lumisound's `ProfileView.swift`/
+ * `PublicProfileView.swift`. Covers identity + banner + guestbook +
+ * badges/streak + blocking + a friends-only Music Match compatibility
+ * score (plus its "press play" Blend Mix companion) + basic self-profile
+ * editing (bio/pronouns/status/guestbook toggle) + pinned tracks --
+ * accent-color/avatar-frame/decoration/effect customization, top genres/
+ * artists, and visitor stats are still out of scope (see
+ * [PublicSocialProfile]'s doc comment for why).
+ *
+ * Pinned tracks are picked from the on-device library (via
+ * [MusicRepository.getAllSongsFromAllSourcesFast]), not a bridge search --
+ * mirrors Lumisound's own `PinnedTrackPickerSheet` exactly ("a pinned
+ * track is just a display card on the profile, not something that needs
+ * to be streamable from someone else's device").
+ *
+ * "Self view" (own profile, with banner edit controls, and never a Block
+ * User button) is detected by comparing the loaded profile's username
+ * against [BridgeTokenStore.getUsername] -- this app has no stored user id
+ * to compare against directly, only the username cached at login.
+ */
+@HiltViewModel
+class PublicProfileViewModel @Inject constructor(
+    @ApplicationContext private val appContext: android.content.Context,
+    private val socialProfileApi: SocialProfileApi,
+    private val socialApi: SocialApi,
+    private val bridgeConfig: BridgeConfig,
+    private val tokenStore: BridgeTokenStore,
+    private val streamResolver: BridgeStreamResolver
+) : ViewModel() {
+
+    data class UiState(
+        val isLoading: Boolean = true,
+        val profile: PublicSocialProfile? = null,
+        val error: String? = null,
+        val bannerBitmap: Bitmap? = null,
+        val isLoadingBanner: Boolean = true,
+        val isUploadingBanner: Boolean = false,
+        val bannerError: String? = null,
+
+        val comments: List<ProfileComment> = emptyList(),
+        val isLoadingComments: Boolean = true,
+        val newCommentBody: String = "",
+        val isPostingComment: Boolean = false,
+        val commentError: String? = null,
+        val deletingCommentId: String? = null,
+
+        val isBlocking: Boolean = false,
+        val showBlockConfirm: Boolean = false,
+        val wasBlocked: Boolean = false,
+
+        val compatibility: MusicCompatibility? = null,
+        val isLoadingCompatibility: Boolean = false,
+
+        val showBlendMix: Boolean = false,
+        val isLoadingBlendMix: Boolean = false,
+        val blendMix: List<BridgeTrack> = emptyList(),
+        val blendMixError: String? = null,
+        val resolvingBlendTrackId: String? = null,
+        val blendPlaybackError: String? = null,
+
+        val isEditingProfile: Boolean = false,
+        val editBioInput: String = "",
+        val editPronounsInput: String = "",
+        val editStatusEmojiInput: String = "",
+        val editStatusTextInput: String = "",
+        val editShowGuestbookInput: Boolean = true,
+        val isSavingProfile: Boolean = false,
+        val profileSaveError: String? = null,
+
+        val isPickingPinnedTrack: Boolean = false,
+        val isLoadingLibrarySongs: Boolean = false,
+        val librarySongs: List<Song> = emptyList(),
+        val pinnedTrackPickerQuery: String = "",
+        val isSavingPinnedTracks: Boolean = false,
+        val pinnedTracksError: String? = null
+    )
+
+    private val _uiState = MutableStateFlow(UiState())
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    private var loadedUserId: String? = null
+
+    val currentUsername: String? get() = tokenStore.getUsername()
+
+    fun isSelfProfile(): Boolean {
+        val username = _uiState.value.profile?.username ?: return false
+        return username == currentUsername
+    }
+
+    fun load(userId: String) {
+        loadedUserId = userId
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val response = socialProfileApi.getPublicProfile(userId)
+                val body = response.body()
+                if (response.isSuccessful && body != null) {
+                    _uiState.update { it.copy(isLoading = false, profile = body) }
+                    loadBanner(userId)
+                    loadComments(userId)
+                    if (body.isFriend && body.username != currentUsername) {
+                        loadCompatibility(userId)
+                    }
+                } else {
+                    _uiState.update { it.copy(isLoading = false, error = "Couldn't load this profile (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Something went wrong. Check your connection and sign-in.") }
+            }
+        }
+    }
+
+    /** A 404 (or any non-200) means "no banner set" -- the normal, expected state for most profiles, not an error. */
+    private fun loadBanner(userId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingBanner = true) }
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    val baseUrl = bridgeConfig.getBaseUrl().trimEnd('/')
+                    val connection = java.net.URL("$baseUrl/api/social/profile/banner/$userId")
+                        .openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout = 10_000
+                    connection.readTimeout = 10_000
+                    if (connection.responseCode == 200) {
+                        connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                    } else {
+                        null
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            _uiState.update { it.copy(isLoadingBanner = false, bannerBitmap = bitmap) }
+        }
+    }
+
+    /** GIF-sniffs by magic bytes, re-encodes anything else to JPEG quality 80 -- mirrors [com.stash.opusplayer.ui.compose.bridge.BridgeSettingsViewModel.uploadAvatarFromUri] exactly. */
+    fun uploadBannerFromUri(uri: Uri) {
+        val userId = _uiState.value.profile?.userId ?: return
+        if (_uiState.value.isUploadingBanner) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingBanner = true, bannerError = null) }
+            try {
+                val rawBytes = withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                } ?: throw IllegalStateException("Couldn't read the selected file.")
+
+                val isGif = rawBytes.size >= 6 &&
+                    (rawBytes.copyOfRange(0, 6).toString(Charsets.US_ASCII) == "GIF87a" ||
+                        rawBytes.copyOfRange(0, 6).toString(Charsets.US_ASCII) == "GIF89a")
+
+                val (uploadBytes, mediaType) = if (isGif) {
+                    rawBytes to "image/gif"
+                } else {
+                    val jpegBytes = withContext(Dispatchers.Default) {
+                        val bitmap = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+                            ?: throw IllegalStateException("That doesn't look like a valid image.")
+                        val out = ByteArrayOutputStream()
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                        bitmap.recycle()
+                        out.toByteArray()
+                    }
+                    jpegBytes to "image/jpeg"
+                }
+
+                val requestBody = uploadBytes.toRequestBody(mediaType.toMediaType())
+                val response = socialProfileApi.uploadBanner(requestBody)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isUploadingBanner = false) }
+                    loadBanner(userId)
+                } else {
+                    _uiState.update { it.copy(isUploadingBanner = false, bannerError = "Couldn't upload that image (HTTP ${response.code()}).") }
+                }
+            } catch (t: Exception) {
+                _uiState.update { it.copy(isUploadingBanner = false, bannerError = t.message ?: "Couldn't upload that image.") }
+            }
+        }
+    }
+
+    fun removeBanner() {
+        val userId = _uiState.value.profile?.userId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingBanner = true, bannerError = null) }
+            runCatching { socialProfileApi.deleteBanner() }
+            _uiState.update { it.copy(isUploadingBanner = false, bannerBitmap = null) }
+            loadBanner(userId)
+        }
+    }
+
+    private fun loadComments(userId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingComments = true) }
+            try {
+                val response = socialProfileApi.getProfileComments(userId)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingComments = false, comments = response.body()?.comments.orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingComments = false) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingComments = false) }
+            }
+        }
+    }
+
+    /** Only called when the loaded profile is a friend and it isn't a self-view -- the server itself 403s/400s otherwise, but there's no point firing a call that can't succeed. */
+    private fun loadCompatibility(userId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingCompatibility = true) }
+            try {
+                val response = socialApi.getCompatibility(userId)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingCompatibility = false, compatibility = response.body()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingCompatibility = false) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingCompatibility = false) }
+            }
+        }
+    }
+
+    fun onNewCommentChanged(value: String) {
+        _uiState.update { it.copy(newCommentBody = value.take(280)) }
+    }
+
+    fun postComment() {
+        val userId = loadedUserId ?: return
+        val text = _uiState.value.newCommentBody.trim()
+        if (text.isEmpty() || _uiState.value.isPostingComment) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isPostingComment = true, commentError = null) }
+            try {
+                val response = socialProfileApi.postProfileComment(userId, PostProfileCommentRequest(text))
+                val posted = response.body()
+                if (response.isSuccessful && posted != null) {
+                    _uiState.update {
+                        it.copy(isPostingComment = false, newCommentBody = "", comments = listOf(posted) + it.comments)
+                    }
+                } else {
+                    _uiState.update { it.copy(isPostingComment = false, commentError = "Couldn't post that comment (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isPostingComment = false, commentError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    /** Optimistic removal, matching the Swift original -- doesn't roll back on failure, mirrors iOS exactly. */
+    fun deleteComment(commentId: String) {
+        _uiState.update { it.copy(deletingCommentId = commentId, comments = it.comments.filterNot { c -> c.id == commentId }) }
+        viewModelScope.launch {
+            runCatching { socialProfileApi.deleteProfileComment(commentId) }
+            _uiState.update { it.copy(deletingCommentId = null) }
+        }
+    }
+
+    // --- Blocking -----------------------------------------------------------
+
+    fun requestBlockConfirm() {
+        _uiState.update { it.copy(showBlockConfirm = true) }
+    }
+
+    fun cancelBlockConfirm() {
+        _uiState.update { it.copy(showBlockConfirm = false) }
+    }
+
+    /**
+     * Blocking tears down any friendship/pending request server-side and
+     * makes the profile mutually invisible (blocked-either-direction is
+     * treated as "not found" by `GET /api/social/profile/{id}`) -- matches
+     * `PublicProfileView.swift`'s own behavior of reloading the profile
+     * after a block, which then shows its "profile isn't available" state.
+     * [UiState.wasBlocked] drives that same fallback here.
+     */
+    fun confirmBlock() {
+        val userId = loadedUserId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBlocking = true, showBlockConfirm = false) }
+            val response = runCatching { socialApi.blockUser(userId) }.getOrNull()
+            if (response?.isSuccessful == true) {
+                _uiState.update { it.copy(isBlocking = false, wasBlocked = true, profile = null) }
+            } else {
+                _uiState.update { it.copy(isBlocking = false, error = "Couldn't block that user.") }
+            }
+        }
+    }
+
+    // --- Self-profile editing (bio/pronouns/status/guestbook toggle) --------
+
+    /** Pre-fills the edit form from the currently-loaded profile -- only ever called for a self-view (see [PublicProfileScreen]'s gating). */
+    fun startEditingProfile() {
+        val profile = _uiState.value.profile ?: return
+        _uiState.update {
+            it.copy(
+                isEditingProfile = true,
+                editBioInput = profile.bio.orEmpty(),
+                editPronounsInput = profile.pronouns.orEmpty(),
+                editStatusEmojiInput = profile.statusEmoji.orEmpty(),
+                editStatusTextInput = profile.statusText.orEmpty(),
+                editShowGuestbookInput = profile.showGuestbook,
+                profileSaveError = null
+            )
+        }
+    }
+
+    fun cancelEditingProfile() {
+        _uiState.update { it.copy(isEditingProfile = false) }
+    }
+
+    fun onEditBioChanged(value: String) {
+        _uiState.update { it.copy(editBioInput = value.take(280)) }
+    }
+
+    fun onEditPronounsChanged(value: String) {
+        _uiState.update { it.copy(editPronounsInput = value.take(30)) }
+    }
+
+    fun onEditStatusEmojiChanged(value: String) {
+        _uiState.update { it.copy(editStatusEmojiInput = value.take(8)) }
+    }
+
+    fun onEditStatusTextChanged(value: String) {
+        _uiState.update { it.copy(editStatusTextInput = value.take(60)) }
+    }
+
+    fun onEditShowGuestbookChanged(value: Boolean) {
+        _uiState.update { it.copy(editShowGuestbookInput = value) }
+    }
+
+    fun saveProfile() {
+        val userId = loadedUserId ?: return
+        if (_uiState.value.isSavingProfile) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingProfile = true, profileSaveError = null) }
+            val state = _uiState.value
+            try {
+                val response = socialProfileApi.updateMyProfile(
+                    SocialProfileUpdateRequest(
+                        bio = state.editBioInput,
+                        pronouns = state.editPronounsInput,
+                        statusEmoji = state.editStatusEmojiInput,
+                        statusText = state.editStatusTextInput,
+                        showGuestbook = state.editShowGuestbookInput
+                    )
+                )
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isSavingProfile = false, isEditingProfile = false) }
+                    load(userId)
+                } else {
+                    _uiState.update { it.copy(isSavingProfile = false, profileSaveError = "Couldn't save (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSavingProfile = false, profileSaveError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    // --- Pinned tracks --------------------------------------------------------
+
+    fun openPinnedTrackPicker() {
+        _uiState.update { it.copy(isPickingPinnedTrack = true, pinnedTrackPickerQuery = "", pinnedTracksError = null) }
+        if (_uiState.value.librarySongs.isNotEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingLibrarySongs = true) }
+            val songs = runCatching {
+                MusicRepository(appContext).getAllSongsFromAllSourcesFast()
+            }.getOrDefault(emptyList())
+            _uiState.update { it.copy(isLoadingLibrarySongs = false, librarySongs = songs) }
+        }
+    }
+
+    fun closePinnedTrackPicker() {
+        _uiState.update { it.copy(isPickingPinnedTrack = false) }
+    }
+
+    fun onPinnedTrackPickerQueryChanged(value: String) {
+        _uiState.update { it.copy(pinnedTrackPickerQuery = value) }
+    }
+
+    /** Appends [song] as a new pinned track (up to the server's 5-slot cap) and saves the full list immediately -- wholesale replace, matching [SetPinnedTracksRequest]'s own contract. */
+    fun pinTrack(song: Song) {
+        val current = _uiState.value.profile?.pinnedTracks ?: return
+        if (current.size >= 5) return
+        val newTrack = PinnedTrack(
+            sourceTrackId = null,
+            trackUrl = null,
+            title = song.displayName,
+            artist = song.artist.takeIf { it.isNotBlank() },
+            album = song.album.takeIf { it.isNotBlank() }
+        )
+        savePinnedTracks(current + newTrack)
+        closePinnedTrackPicker()
+    }
+
+    fun removePinnedTrack(index: Int) {
+        val current = _uiState.value.profile?.pinnedTracks ?: return
+        if (index !in current.indices) return
+        savePinnedTracks(current.filterIndexed { i, _ -> i != index })
+    }
+
+    private fun savePinnedTracks(tracks: List<PinnedTrack>) {
+        val userId = loadedUserId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingPinnedTracks = true, pinnedTracksError = null) }
+            try {
+                val response = socialProfileApi.setPinnedTracks(SetPinnedTracksRequest(tracks))
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isSavingPinnedTracks = false) }
+                    load(userId)
+                } else {
+                    _uiState.update { it.copy(isSavingPinnedTracks = false, pinnedTracksError = "Couldn't save pinned tracks (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSavingPinnedTracks = false, pinnedTracksError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    // --- Blend Mix --------------------------------------------------------
+
+    /**
+     * The "press play" companion to the Music Match score -- only ever
+     * called from a button next to [UiState.compatibility], matching
+     * Lumisound's `BlendMixView` being reached from a "Play Blend Mix"
+     * button on the same Music Match card, not auto-loaded with the rest
+     * of the profile.
+     */
+    fun requestBlendMix() {
+        val userId = loadedUserId ?: return
+        _uiState.update { it.copy(showBlendMix = true) }
+        if (_uiState.value.blendMix.isNotEmpty() || _uiState.value.isLoadingBlendMix) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingBlendMix = true, blendMixError = null) }
+            try {
+                val response = socialApi.getBlendMix(userId)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoadingBlendMix = false, blendMix = response.body().orEmpty()) }
+                } else {
+                    _uiState.update { it.copy(isLoadingBlendMix = false, blendMixError = "Couldn't load blend mix (HTTP ${response.code()}).") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingBlendMix = false, blendMixError = "Something went wrong. Check your connection.") }
+            }
+        }
+    }
+
+    fun closeBlendMix() {
+        _uiState.update { it.copy(showBlendMix = false) }
+    }
+
+    fun playBlendTrack(track: BridgeTrack) {
+        if (_uiState.value.resolvingBlendTrackId != null) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(resolvingBlendTrackId = track.id, blendPlaybackError = null) }
+            val request = PlaybackRequest(
+                sourceId = track.id,
+                source = track.source,
+                url = track.youtubeUrl,
+                preferredFormat = "m4a"
+            )
+            val result = streamResolver.resolve(request)
+            result.onSuccess { resolution ->
+                val song = Song(
+                    id = -1L,
+                    title = track.title,
+                    artist = track.artist,
+                    album = "",
+                    duration = track.durationSeconds * 1000L,
+                    path = resolution.streamUrl
+                )
+                (appContext.applicationContext as? StashOpusApplication)?.playerManager?.playSong(song)
+                _uiState.update { it.copy(resolvingBlendTrackId = null) }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(resolvingBlendTrackId = null, blendPlaybackError = "Couldn't play that track: ${error.message ?: "unknown error"}")
+                }
+            }
+        }
+    }
+}

@@ -14,14 +14,21 @@ import androidx.lifecycle.lifecycleScope
 import com.stash.opusplayer.ui.appearance.AppearancePreferences
 import com.stash.opusplayer.ui.appearance.ThemeManager
 import com.stash.opusplayer.ui.appearance.VisualCustomizationManager
+import com.stash.opusplayer.lua.LuaUserScriptLibrary
+import com.stash.opusplayer.lua.LuaVisualizer
+import com.stash.opusplayer.lua.LuaVisualizerEngine
+import com.stash.opusplayer.ui.appearance.lua.LuaPreset
+import com.stash.opusplayer.ui.appearance.lua.LuaThemeEngine
 import com.stash.opusplayer.ui.fragments.settings.NavigableSettingsFragment
 import com.stash.opusplayer.ui.fragments.settings.addActionButton
 import com.stash.opusplayer.ui.fragments.settings.addBodyText
 import com.stash.opusplayer.ui.fragments.settings.addChipButtonRow
 import com.stash.opusplayer.ui.fragments.settings.addSettingsSection
+import com.stash.opusplayer.ui.fragments.settings.addSettingsTile
 import com.stash.opusplayer.ui.fragments.settings.addSliderControl
 import com.stash.opusplayer.ui.fragments.settings.addSpinnerControl
 import com.stash.opusplayer.ui.fragments.settings.addSwitchControl
+import com.stash.opusplayer.ui.fragments.settings.addTextInputControl
 import com.stash.opusplayer.ui.fragments.settings.createSettingsPage
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -35,6 +42,13 @@ class VisualCustomizationFragment : NavigableSettingsFragment() {
     private lateinit var motionStatusView: TextView
     private lateinit var backgroundModeSpinner: Spinner
     private lateinit var animationSpeedSpinner: Spinner
+    private lateinit var userPresetNameField: com.google.android.material.textfield.TextInputEditText
+    private lateinit var userPresetScriptField: com.google.android.material.textfield.TextInputEditText
+    private lateinit var userPresetsSection: LinearLayout
+    private lateinit var userVisualizerNameField: com.google.android.material.textfield.TextInputEditText
+    private lateinit var userVisualizerScriptField: com.google.android.material.textfield.TextInputEditText
+    private lateinit var userVisualizersSection: LinearLayout
+    private lateinit var visualizerStatusView: TextView
 
     private var currentPrefs = AppearancePreferences()
     private var hydratingBackgroundMode = false
@@ -74,13 +88,269 @@ class VisualCustomizationFragment : NavigableSettingsFragment() {
         )
 
         buildCurrentState(content)
+        buildLuaPresetsSection(content)
+        buildLuaVisualizersSection(content)
         buildAnimationSection(content)
         buildBackgroundSection(content)
         buildPhotoSection(content)
         buildRecoverySection(content)
         syncUiFromState()
+        refreshVisualizerStatus()
 
         return scrollView
+    }
+
+    /**
+     * Applies one of the bundled `.lua` theme presets (see
+     * [LuaThemeEngine]/[LuaPreset]) — each script sets colors, typography,
+     * shadows/corner-radius, background, animation speed, mini player, and
+     * (where relevant) SynthWave visualizer colors in one shot. This is the
+     * first UI surface for the Lua theming engine ported from Lumisound; it
+     * intentionally replaces the old hardcoded `AppearancePresets` entry
+     * point rather than living alongside it, since that one was never
+     * wired into any screen in the first place.
+     */
+    private fun buildLuaPresetsSection(parent: LinearLayout) {
+        val section = addSettingsSection(
+            parent,
+            "Lua Presets",
+            "Script-driven looks — each preset sets colors, motion, mini player, and SynthWave visualizer tuning together."
+        )
+
+        addChipButtonRow(
+            section,
+            LuaPreset.entries.map { preset ->
+                preset.displayName to {
+                    val applied = LuaThemeEngine.apply(requireContext(), preset)
+                    if (applied != null) {
+                        syncUiFromState()
+                        Toast.makeText(requireContext(), "${preset.displayName} applied.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Couldn't load the ${preset.displayName} preset script.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+
+        buildUserPresetsSection(parent)
+    }
+
+    /**
+     * Community/user preset sharing, ported from Lumisound's own
+     * ("Community preset sharing", `LuaThemeEngine.importUserPreset`) —
+     * backed by [LuaUserScriptLibrary], the same shared script-folder
+     * concept every scriptable feature there uses. Paste a friend's script
+     * (or write your own) here; it's saved under the app's private storage
+     * and applies exactly like a bundled preset from then on.
+     */
+    private fun buildUserPresetsSection(parent: LinearLayout) {
+        val importSection = addSettingsSection(
+            parent,
+            "Import a Preset",
+            "Paste a shared preset script (or write your own) and give it a name."
+        )
+        userPresetNameField = addTextInputControl(
+            importSection,
+            title = "Name",
+            summary = "",
+            hint = "e.g. Midnight Purple",
+            initialText = ""
+        )
+        userPresetScriptField = addTextInputControl(
+            importSection,
+            title = "Script",
+            summary = "",
+            hint = "Lua",
+            initialText = "",
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        ).apply {
+            minLines = 6
+            isSingleLine = false
+        }
+        addActionButton(importSection, "Import") { importUserPreset() }
+
+        userPresetsSection = addSettingsSection(
+            parent,
+            "My Presets",
+            "Imported presets — tap to apply, or delete."
+        )
+        renderUserPresets()
+    }
+
+    private fun importUserPreset() {
+        val name = userPresetNameField.text?.toString()?.trim().orEmpty()
+        val script = userPresetScriptField.text?.toString().orEmpty()
+        if (name.isEmpty() || script.isBlank()) {
+            Toast.makeText(requireContext(), "Give it a name and a script first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        LuaUserScriptLibrary.importScript(requireContext(), script, name, subdirectory = "lua_presets")
+        userPresetNameField.setText("")
+        userPresetScriptField.setText("")
+        renderUserPresets()
+        Toast.makeText(requireContext(), "\"$name\" imported.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun renderUserPresets() {
+        userPresetsSection.removeAllViews()
+        val userScripts = LuaUserScriptLibrary.userScripts(requireContext(), subdirectory = "lua_presets")
+        if (userScripts.isEmpty()) {
+            addBodyText(userPresetsSection, "No imported presets yet.")
+            return
+        }
+        userScripts.forEach { ref ->
+            addSettingsTile(
+                userPresetsSection,
+                title = ref.displayName,
+                summary = "Tap to apply this imported preset.",
+                buttonLabel = "Apply"
+            ) {
+                val source = ref.readSource(requireContext())
+                val applied = source?.let { LuaThemeEngine.applySource(requireContext(), it, chunkName = ref.id) }
+                if (applied != null) {
+                    syncUiFromState()
+                    Toast.makeText(requireContext(), "${ref.displayName} applied.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(requireContext(), "Couldn't run \"${ref.displayName}\" -- check it for errors.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            addChipButtonRow(userPresetsSection, listOf("Delete \"${ref.displayName}\"" to {
+                LuaUserScriptLibrary.deleteUserScript(ref)
+                renderUserPresets()
+                Toast.makeText(requireContext(), "\"${ref.displayName}\" deleted.", Toast.LENGTH_SHORT).show()
+            }))
+        }
+    }
+
+    /**
+     * Applies one of the bundled `.lua` spectrum-visualizer LOOKS (see
+     * [LuaVisualizerEngine]/[LuaVisualizer]) — each script controls the
+     * SynthWave spectrum's gradient colors, sensitivity, bar corner
+     * radius/spacing, and mirroring. This is independent of the Lua theme
+     * presets above: a theme preset's own SynthWave colors are a one-time
+     * bake into the same prefs a visualizer script can also drive, so
+     * whichever was applied more recently wins on the live renderer.
+     */
+    private fun buildLuaVisualizersSection(parent: LinearLayout) {
+        val section = addSettingsSection(
+            parent,
+            "Lua Visualizers",
+            "Script-driven spectrum looks — colors, sensitivity, bar shape, and mirroring, applied to the live SynthWave visualizer."
+        )
+
+        visualizerStatusView = addBodyText(section, "")
+
+        addChipButtonRow(
+            section,
+            LuaVisualizer.entries.map { visualizer ->
+                visualizer.displayName to {
+                    val applied = LuaVisualizerEngine.apply(requireContext(), visualizer)
+                    if (applied != null) {
+                        refreshVisualizerStatus()
+                        Toast.makeText(requireContext(), "${visualizer.displayName} applied.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Couldn't load the ${visualizer.displayName} script.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+
+        addActionButton(section, "Clear visualizer (use default look)", outlined = true) {
+            LuaVisualizerEngine.clear(requireContext())
+            refreshVisualizerStatus()
+            Toast.makeText(requireContext(), "Visualizer reset to default.", Toast.LENGTH_SHORT).show()
+        }
+
+        buildUserVisualizersSection(parent)
+    }
+
+    /** Same "paste a shared script, apply, or delete" shape as [buildUserPresetsSection], for visualizer scripts. */
+    private fun buildUserVisualizersSection(parent: LinearLayout) {
+        val importSection = addSettingsSection(
+            parent,
+            "Import a Visualizer",
+            "Paste a shared visualizer script (or write your own) and give it a name."
+        )
+        userVisualizerNameField = addTextInputControl(
+            importSection,
+            title = "Name",
+            summary = "",
+            hint = "e.g. Deep Sea Pulse",
+            initialText = ""
+        )
+        userVisualizerScriptField = addTextInputControl(
+            importSection,
+            title = "Script",
+            summary = "",
+            hint = "Lua",
+            initialText = "",
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        ).apply {
+            minLines = 6
+            isSingleLine = false
+        }
+        addActionButton(importSection, "Import") { importUserVisualizer() }
+
+        userVisualizersSection = addSettingsSection(
+            parent,
+            "My Visualizers",
+            "Imported visualizer scripts — tap to apply, or delete."
+        )
+        renderUserVisualizers()
+    }
+
+    private fun importUserVisualizer() {
+        val name = userVisualizerNameField.text?.toString()?.trim().orEmpty()
+        val script = userVisualizerScriptField.text?.toString().orEmpty()
+        if (name.isEmpty() || script.isBlank()) {
+            Toast.makeText(requireContext(), "Give it a name and a script first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        LuaUserScriptLibrary.importScript(requireContext(), script, name, subdirectory = "lua_visualizers")
+        userVisualizerNameField.setText("")
+        userVisualizerScriptField.setText("")
+        renderUserVisualizers()
+        Toast.makeText(requireContext(), "\"$name\" imported.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun renderUserVisualizers() {
+        userVisualizersSection.removeAllViews()
+        val userScripts = LuaUserScriptLibrary.userScripts(requireContext(), subdirectory = "lua_visualizers")
+        if (userScripts.isEmpty()) {
+            addBodyText(userVisualizersSection, "No imported visualizers yet.")
+            return
+        }
+        userScripts.forEach { ref ->
+            addSettingsTile(
+                userVisualizersSection,
+                title = ref.displayName,
+                summary = "Tap to apply this imported visualizer.",
+                buttonLabel = "Apply"
+            ) {
+                val source = ref.readSource(requireContext())
+                val applied = source?.let { LuaVisualizerEngine.applySource(requireContext(), it, chunkName = ref.id) }
+                if (applied != null) {
+                    refreshVisualizerStatus()
+                    Toast.makeText(requireContext(), "${ref.displayName} applied.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(requireContext(), "Couldn't run \"${ref.displayName}\" -- check it for errors.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            addChipButtonRow(userVisualizersSection, listOf("Delete \"${ref.displayName}\"" to {
+                LuaUserScriptLibrary.deleteUserScript(ref)
+                renderUserVisualizers()
+                Toast.makeText(requireContext(), "\"${ref.displayName}\" deleted.", Toast.LENGTH_SHORT).show()
+            }))
+        }
+    }
+
+    private fun refreshVisualizerStatus() {
+        val selected = LuaVisualizerEngine.selectedVisualizer(requireContext())
+        visualizerStatusView.text = when {
+            selected != null -> "Applied: ${selected.displayName}"
+            LuaVisualizerEngine.isCustomSelected(requireContext()) -> "Applied: Custom"
+            else -> "Applied: Default look"
+        }
     }
 
     private fun buildCurrentState(parent: LinearLayout) {

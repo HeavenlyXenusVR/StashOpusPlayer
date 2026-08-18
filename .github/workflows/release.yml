@@ -1,0 +1,109 @@
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   KEYSTORE_BASE64   - `base64 -w0 your-release-key.jks` output
+#   KEYSTORE_PASSWORD - the keystore password
+#   KEY_ALIAS         - the signing key alias
+#   KEY_PASSWORD      - the signing key password
+# Optional:
+#   YOUTUBE_API_KEY        - baked into BuildConfig for the release build
+#   GPP_SERVICE_ACCOUNT_JSON - Play Console service-account JSON, only needed
+#                              for the "publish_to_play" manual-dispatch option
+name: Release
+
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag name to attach artifacts to (required for manual runs)
+        required: true
+      publish_to_play:
+        description: Also publish the AAB to the Play Store production track
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # lfs intentionally not enabled -- see build.yml for why.
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is not set — cannot produce a signed release build."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: Write local.properties for signing
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          {
+            echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.keystore"
+            echo "RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "YOUTUBE_API_KEY=$YOUTUBE_API_KEY"
+          } > local.properties
+
+      - name: Build signed release APK and AAB
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+
+      - name: Generate checksums
+        run: |
+          sha256sum app/build/outputs/apk/release/app-release.apk > RELEASE_CHECKSUMS.txt
+          sha256sum app/build/outputs/bundle/release/app-release.aab >> RELEASE_CHECKSUMS.txt
+
+      - name: Verify APK signature
+        run: |
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+            RELEASE_CHECKSUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Play Store production track
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_play == 'true' }}
+        env:
+          GPP_SERVICE_ACCOUNT_JSON: ${{ secrets.GPP_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GPP_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::GPP_SERVICE_ACCOUNT_JSON secret is not set — skipping Play Store publish."
+            exit 1
+          fi
+          echo "$GPP_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-service-account.json"
+          GPP_SERVICE_ACCOUNT_JSON="$RUNNER_TEMP/play-service-account.json" ./gradlew :app:publishBundle --no-daemon --stacktrace
+
+      - name: Clean up signing secrets
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/release.keystore" "$RUNNER_TEMP/play-service-account.json" local.properties

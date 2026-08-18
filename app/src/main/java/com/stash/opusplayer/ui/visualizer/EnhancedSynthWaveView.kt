@@ -12,6 +12,7 @@ import kotlin.math.*
 import kotlin.random.Random
 import android.media.audiofx.Visualizer
 import com.stash.opusplayer.ui.appearance.AppearancePreferences
+import com.stash.opusplayer.lua.LuaVisualizerEngine
 
 /**
  * Enhanced SynthWave visualizer with advanced animations and effects
@@ -52,17 +53,63 @@ class EnhancedSynthWaveView @JvmOverloads constructor(
         )
     }
     
+    /** The built-in look, kept as a factory (not a one-shot val) so [refreshLuaVisualizerConfig] can restore it exactly when a previously-applied Lua visualizer is cleared — same 4-stop magenta/purple/blue/cyan gradient this view always shipped with. */
+    private fun defaultSpectrumShader(): Shader = LinearGradient(
+        0f, 0f, 0f, 300f,
+        intArrayOf(
+            Color.parseColor("#FF00FF"),
+            Color.parseColor("#8000FF"),
+            Color.parseColor("#0080FF"),
+            Color.parseColor("#00FFFF")
+        ),
+        floatArrayOf(0f, 0.3f, 0.7f, 1f),
+        Shader.TileMode.CLAMP
+    )
+
     private val spectrumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        shader = LinearGradient(
+        shader = defaultSpectrumShader()
+    }
+
+    /**
+     * Resolved from a bundled/imported `.lua` script — see
+     * [LuaVisualizerEngine]'s doc comment. `null` means no Lua visualizer is
+     * applied, in which case [drawSpectrum] uses this view's original
+     * hardcoded gradient/sensitivity/spacing unchanged, exactly as before
+     * this engine was wired in.
+     */
+    private var luaVisualizerConfig: LuaVisualizerEngine.Config? = null
+
+    /**
+     * Re-reads the currently-applied Lua visualizer (if any) from
+     * `SharedPreferences` and rebuilds [spectrumPaint]'s gradient to match —
+     * called once from `init` and again whenever
+     * [setupPreferenceListener]'s listener sees one of
+     * [LuaVisualizerEngine]'s pref keys change, so applying a different
+     * visualizer (or clearing one) from the settings screen takes effect on
+     * an already-open Now Playing screen immediately.
+     */
+    private fun refreshLuaVisualizerConfig() {
+        val config = LuaVisualizerEngine.configFromPrefs(context)
+        luaVisualizerConfig = config
+        spectrumPaint.shader = if (config != null) {
+            buildSpectrumShader(config.colors)
+        } else {
+            defaultSpectrumShader()
+        }
+    }
+
+    /** Builds a bottom-to-top [LinearGradient] from a Lua visualizer's hex color stops, evenly spaced. Malformed hex strings fall back to the original gradient entirely (a script that resolved 2+ strings but got the hex format wrong shouldn't crash the renderer). */
+    private fun buildSpectrumShader(hexColors: List<String>): Shader {
+        val parsed = try {
+            hexColors.map { Color.parseColor(it) }.toIntArray()
+        } catch (e: IllegalArgumentException) {
+            return defaultSpectrumShader()
+        }
+        return LinearGradient(
             0f, 0f, 0f, 300f,
-            intArrayOf(
-                Color.parseColor("#FF00FF"),
-                Color.parseColor("#8000FF"),
-                Color.parseColor("#0080FF"),
-                Color.parseColor("#00FFFF")
-            ),
-            floatArrayOf(0f, 0.3f, 0.7f, 1f),
+            parsed,
+            null, // evenly spaced -- matches this view's own default gradient's spacing contract closely enough; Lua scripts don't specify custom stop positions
             Shader.TileMode.CLAMP
         )
     }
@@ -236,6 +283,7 @@ class EnhancedSynthWaveView @JvmOverloads constructor(
         initializeParticles()
         initializeGalaxyStars()
         setLayerType(LAYER_TYPE_HARDWARE, null)
+        refreshLuaVisualizerConfig()
         setupPreferenceListener()
     }
     
@@ -255,6 +303,17 @@ class EnhancedSynthWaveView @JvmOverloads constructor(
                         if (enableParticles) {
                             initializeParticles()
                         }
+                        invalidate()
+                    }
+                }
+                "lua_visualizer_selected",
+                "lua_visualizer_colors",
+                "lua_visualizer_sensitivity",
+                "lua_visualizer_bar_corner_radius",
+                "lua_visualizer_bar_spacing",
+                "lua_visualizer_mirrored" -> {
+                    post {
+                        refreshLuaVisualizerConfig()
                         invalidate()
                     }
                 }
@@ -774,25 +833,54 @@ class EnhancedSynthWaveView @JvmOverloads constructor(
     private fun drawSpectrum(canvas: Canvas) {
         val spectrum = spectrumData ?: return
         if (width <= 0 || height <= 0) return
-        
+
+        val config = luaVisualizerConfig
         val barWidth = width.toFloat() / spectrum.size
-        
+        // A Lua visualizer's `sensitivity` multiplies on TOP of the existing
+        // `animationIntensity` preference rather than replacing it -- the
+        // two are orthogonal knobs (overall animation intensity is a
+        // user-facing settings toggle unrelated to any specific visualizer
+        // script) and Lumisound's own LuaVisualizerEngine treats them the
+        // same way (a per-script multiplier layered on the live analysis,
+        // not a full override of it).
+        val sensitivity = config?.sensitivity ?: 1.0f
+        val gap = config?.barSpacing ?: 2f
+        val cornerRadius = config?.barCornerRadius ?: 0f
+        val mirrored = config?.mirrored ?: false
+
         for (i in spectrum.indices) {
-            val amplitude = spectrum[i] * animationIntensity
+            // Mirroring reads the amplitude from the opposite end of the
+            // spectrum while keeping this bar's own x position sequential --
+            // a purely cosmetic left/right flip of which frequency shows
+            // where, same semantic as Lumisound's own `mirrored` field.
+            val sourceIndex = if (mirrored) spectrum.size - 1 - i else i
+            val amplitude = spectrum[sourceIndex] * animationIntensity * sensitivity
             val barHeight = (amplitude / MAX_AMPLITUDE) * height * 0.6f
             val x = i * barWidth
             val y = height.toFloat()
-            
+
             // Add wave effect
             val waveOffset = sin(animationPhase + i * 0.1f) * 10f * animationIntensity
-            
-            canvas.drawRect(
-                x, 
-                y - barHeight + waveOffset, 
-                x + barWidth - 2f, 
-                y + waveOffset, 
-                spectrumPaint
-            )
+
+            if (cornerRadius > 0f) {
+                canvas.drawRoundRect(
+                    x,
+                    y - barHeight + waveOffset,
+                    x + barWidth - gap,
+                    y + waveOffset,
+                    cornerRadius,
+                    cornerRadius,
+                    spectrumPaint
+                )
+            } else {
+                canvas.drawRect(
+                    x,
+                    y - barHeight + waveOffset,
+                    x + barWidth - gap,
+                    y + waveOffset,
+                    spectrumPaint
+                )
+            }
         }
     }
     

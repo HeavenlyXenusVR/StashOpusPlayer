@@ -258,6 +258,37 @@ class EqualizerManager(private val context: Context) {
             Log.e(TAG, "Error setting band level", e)
         }
     }
+
+    /**
+     * Applies a resolved `LuaAudioEffectEngine.Config`'s EQ curve (10 fixed-
+     * frequency dB values, see that class). Reuses [applyLevels] -- the exact
+     * same "truncate/pad to whatever `numberOfBands` this device reports"
+     * convention every native preset already goes through, rather than a
+     * frequency-aware resample: this codebase already treats "same band
+     * index, different meaning per device" as good enough for the 12-value
+     * native presets (see [applyRockPreset] etc.), and a scripted 10-value
+     * curve is no different a problem.
+     */
+    fun applyLuaEffect(eqBands: List<Float>, eqEnabled: Boolean) {
+        try {
+            equalizer?.let { eq ->
+                if (eqEnabled) {
+                    val millibels = eqBands.map { (it * 1000f).toInt() }.toIntArray()
+                    applyLevels(eq, millibels)
+                } else {
+                    for (i in 0 until eq.numberOfBands) {
+                        eq.setBandLevel(i.toShort(), 0)
+                    }
+                }
+                _currentPreset.value = EqualizerPreset.CUSTOM
+                prefs.edit().putString(PREF_EQ_PRESET, EqualizerPreset.CUSTOM.name).apply()
+                saveCustomBands()
+                updateBandLevels()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error applying Lua effect", e)
+        }
+    }
     
     fun setBassBoost(strength: Int) {
         try {

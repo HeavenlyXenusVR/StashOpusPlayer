@@ -13,6 +13,14 @@
         android:title="Embed Artwork into File"
         android:visible="true" />
     <item
+        android:id="@+id/action_make_clip"
+        android:title="Make Clip"
+        android:visible="true" />
+    <item
+        android:id="@+id/action_identify_track"
+        android:title="Identify Track (AcoustID)"
+        android:visible="true" />
+    <item
         android:id="@+id/action_toggle_crossfade"
         android:title="Toggle Crossfade"
         android:visible="true" />
@@ -28,6 +36,16 @@
     <item
         android:id="@+id/action_sleep_timer"
         android:title="Sleep Timer"
+        android:visible="true" />
+
+    <item
+        android:id="@+id/action_send_to_device"
+        android:title="Send to Device"
+        android:visible="true" />
+
+    <item
+        android:id="@+id/action_restore_synced_queue"
+        android:title="Restore Synced Queue"
         android:visible="true" />
 
     <item

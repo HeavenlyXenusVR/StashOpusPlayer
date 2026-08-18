@@ -1,4 +1,4 @@
-Stash Audio is a fast, modern Android music player with precision controls and a clean, Material design. Play your local music with independent pitch (±12 semitones) and speed control, a 10‑band equalizer with presets, bass boost, virtualizer, and reverb. Enjoy instant library loading, rich metadata, and beautiful album art (embedded or fetched online).
+StashOpusPlayer is a fast, modern Android music player with precision controls and a clean, Material design. Play your local music with independent pitch (±12 semitones) and speed control, a 10‑band equalizer with presets, bass boost, virtualizer, and reverb. Enjoy instant library loading, rich metadata, and beautiful album art (embedded or fetched online).
 
 Key features:
 - Audio & playback

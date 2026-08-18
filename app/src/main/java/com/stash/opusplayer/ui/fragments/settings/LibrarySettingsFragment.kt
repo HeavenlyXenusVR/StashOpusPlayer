@@ -40,6 +40,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
             requireContext().contentResolver.takePersistableUriPermission(uri, flags)
             MusicRepository(requireContext()).addCustomMusicFolderTreeUri(uri.toString())
             updateFolderSummary()
+            com.stash.opusplayer.backup.FolderBackupService.schedulePush(requireContext())
             Toast.makeText(
                 requireContext(),
                 "Folder added. Pull to refresh the library after a rescan.",
@@ -113,6 +114,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     return
                 }
                 settings.edit().putInt(PrefsKeys.DEFAULT_SONGS_VIEW_COLUMNS, columnsForPosition(position)).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -133,6 +135,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     return
                 }
                 settings.edit().putInt(PrefsKeys.DEFAULT_FOLDERS_VIEW_COLUMNS, columnsForPosition(position)).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -153,6 +156,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     return
                 }
                 settings.edit().putInt(PrefsKeys.DEFAULT_FOLDER_DETAIL_VIEW_COLUMNS, columnsForPosition(position)).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -311,6 +315,7 @@ class LibrarySettingsFragment : NavigableSettingsFragment() {
                     )
                 }
                 updateFolderSummary()
+                com.stash.opusplayer.backup.FolderBackupService.schedulePush(requireContext())
                 Toast.makeText(requireContext(), "Folder removed.", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Close", null)

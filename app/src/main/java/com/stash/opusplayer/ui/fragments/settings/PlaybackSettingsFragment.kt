@@ -78,6 +78,7 @@ class PlaybackSettingsFragment : NavigableSettingsFragment() {
         ) { value, fromUser ->
             if (fromUser) {
                 settings.edit().putFloat("playback_speed", value).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
                 mediaController?.let { controller ->
                     runCatching {
                         val current = controller.playbackParameters
@@ -109,6 +110,7 @@ class PlaybackSettingsFragment : NavigableSettingsFragment() {
                     .putInt("pitch_semitones", semitones)
                     .putFloat("pitch_factor", factor)
                     .apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
                 mediaController?.let { controller ->
                     runCatching {
                         val current = controller.playbackParameters
@@ -195,6 +197,7 @@ class PlaybackSettingsFragment : NavigableSettingsFragment() {
             checked = settings.getBoolean("crossfade_enabled", false)
         ) { enabled ->
             settings.edit().putBoolean("crossfade_enabled", enabled).apply()
+            com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             sendCustomCommand("SET_CROSSFADE_ENABLED", bundleOf("enabled" to enabled))
         }
 
@@ -211,6 +214,7 @@ class PlaybackSettingsFragment : NavigableSettingsFragment() {
             if (fromUser) {
                 val durationMs = value.roundToInt().toLong().coerceIn(0L, 5000L)
                 settings.edit().putLong("crossfade_duration_ms", durationMs).apply()
+                com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
                 sendCustomCommand("SET_CROSSFADE_DURATION", bundleOf("duration_ms" to durationMs))
             }
         }
@@ -218,6 +222,7 @@ class PlaybackSettingsFragment : NavigableSettingsFragment() {
         crossfadeToggle.setOnCheckedChangeListener { _, enabled ->
             crossfadeSlider.isEnabled = enabled
             settings.edit().putBoolean("crossfade_enabled", enabled).apply()
+            com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
             sendCustomCommand("SET_CROSSFADE_ENABLED", bundleOf("enabled" to enabled))
         }
 
@@ -247,6 +252,7 @@ class PlaybackSettingsFragment : NavigableSettingsFragment() {
             checked = settings.getBoolean("skip_silence_enabled", false)
         ) { enabled ->
             settings.edit().putBoolean("skip_silence_enabled", enabled).apply()
+            com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
         }
 
         addSwitchControl(
@@ -274,6 +280,7 @@ class PlaybackSettingsFragment : NavigableSettingsFragment() {
             checked = settings.getBoolean("replaygain_enabled", false)
         ) { enabled ->
             settings.edit().putBoolean("replaygain_enabled", enabled).apply()
+            com.stash.opusplayer.bridge.SettingsSyncManager.schedulePushFrom(requireContext())
         }
 
         val modeEntries = listOf("Track gain", "Album gain")

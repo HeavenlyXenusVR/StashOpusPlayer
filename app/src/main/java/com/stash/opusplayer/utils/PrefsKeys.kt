@@ -59,6 +59,12 @@ object PrefsKeys {
     // Appearance - Bookkeeping
     const val APPEARANCE_RECENT_COLORS_JSON = "appearance_recent_colors_json"
     const val APPEARANCE_LAST_PRESET_NAME = "appearance_last_preset_name"
+
+    // Privacy - App Lock
+    const val APP_LOCK_ENABLED = "app_lock_enabled" // Boolean
+
+    // Cross-device settings sync -- see com.stash.opusplayer.bridge.SettingsSyncManager
+    const val SYNC_ANDROID_SETTINGS_BOOTSTRAPPED = "sync_android_settings_bootstrapped" // Boolean
 }
 
 object PrefsUtils {

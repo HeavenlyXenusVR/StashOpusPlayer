@@ -1,0 +1,178 @@
+package com.stash.opusplayer.bridge.api
+
+import com.google.gson.annotations.SerializedName
+import retrofit2.Response
+import retrofit2.http.GET
+import retrofit2.http.Headers
+import retrofit2.http.Query
+
+/**
+ * One group of GET /user/on-this-day (main.py ~L6775). [tracks] reuses
+ * [BridgeTrack] -- same `_parse_track` shape as the discover-mix/search/
+ * resolve endpoints -- but [BridgeTrack.durationSeconds]/[BridgeTrack.thumbnailUrl]
+ * are always 0/"" here (not derivable from play-history rows alone).
+ */
+data class OnThisDayGroup(
+    @SerializedName("years_ago") val yearsAgo: Int,
+    val year: Int,
+    val tracks: List<BridgeTrack> = emptyList()
+)
+
+/**
+ * Response of GET /api/artist/bio (main.py ~L6898). Despite the `/api/`
+ * prefix (elsewhere meaning operator-API-key auth, see [StreamingApi]'s
+ * class doc), this route is JWT user-auth-gated like the rest of this file
+ * -- confirmed against main.py directly, and matches Lumisound's own
+ * `AccountService+ArtistBio.swift` guarding on login state. Never 404s --
+ * a not-found artist is a 200 with only [found] = false and every other
+ * field null/absent (server negative-caches this for 30 days too, so a
+ * bad/misspelled name won't hammer MusicBrainz/Wikipedia on every repeat
+ * visit).
+ */
+data class ArtistBioResponse(
+    val found: Boolean,
+    val name: String? = null,
+    val bio: String? = null,
+    @SerializedName("image_url") val imageUrl: String? = null,
+    @SerializedName("wikipedia_url") val wikipediaUrl: String? = null,
+    @SerializedName("artist_type") val artistType: String? = null,
+    val country: String? = null,
+    @SerializedName("begin_date") val beginDate: String? = null,
+    @SerializedName("end_date") val endDate: String? = null,
+    val tags: List<String> = emptyList()
+)
+
+/** One row of GET /social/discover's `tracks` array (main.py ~L7794) -- global trending title/artist pairs (not per-user, not friends-only) among users who opted into `share_listening_activity`. No `track_url`/`id`/`source` at all (grouped aggregate, not a single history row) -- purely informational, matching Lumisound's own `DiscoverView` Trending tab, which has no tap-to-play either. */
+data class TrendingTrack(
+    val title: String,
+    val artist: String? = null,
+    @SerializedName("play_count") val playCount: Int = 0,
+    @SerializedName("listener_count") val listenerCount: Int = 0
+)
+
+data class TrendingTracksResponse(
+    val tracks: List<TrendingTrack> = emptyList()
+)
+
+/** One row of GET /social/activity's `activity` array (main.py ~L7755) -- "what others are listening to" among ALL opted-in users, not just friends (distinct from [SocialApi.getFriendsActivity]). No user id at all, purely informational. */
+data class GlobalActivityEntry(
+    val username: String,
+    @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    @SerializedName("played_at") val playedAt: String? = null
+)
+
+data class GlobalActivityResponse(
+    val activity: List<GlobalActivityEntry> = emptyList()
+)
+
+/**
+ * Response of GET /social/similar-listeners (main.py ~L7836) -- real
+ * user-to-user collaborative filtering: finds other opted-in users whose
+ * top artists overlap with the caller's own, then surfaces tracks THOSE
+ * similar listeners play a lot (excluding artists already in the caller's
+ * own top list). [reason] is only set on the two early-return empty cases
+ * ("not_enough_history" -- the caller has no play history at all;
+ * "no_similar_listeners" -- nobody opted-in overlaps) and should drive a
+ * more specific empty-state message than a generic "nothing here."
+ * [tracks] reuses [TrendingTrack]'s shape exactly. Distinct from Discover
+ * Mix (a YouTube "similar artist" search seeded from the caller's own
+ * data, not real listening data from other people) and from global
+ * Trending (not personalized).
+ */
+data class SimilarListenersResponse(
+    val tracks: List<TrendingTrack> = emptyList(),
+    @SerializedName("similar_listener_count") val similarListenerCount: Int = 0,
+    val reason: String? = null
+)
+
+/**
+ * Discover Mix, On This Day, Artist Bio, and the opt-in global Trending/
+ * Community Activity lists -- read-only, JWT-gated endpoints with no
+ * Stash UI before this pass. All needed no bridge changes. Kept as a
+ * separate interface from [SyncApi] (which is already 400+ lines) rather
+ * than folded in, since this is a distinct feature area (discovery/recall,
+ * not account sync).
+ *
+ * [getTrendingTracks]/[getGlobalActivity]/[getSimilarListeners] require the
+ * caller be signed in (JWT), but the *rows themselves* come only from users
+ * who separately opted into `share_listening_activity` via
+ * [com.stash.opusplayer.bridge.api.AuthApi.updatePrivacy] -- the caller's
+ * own opt-in status has no bearing on whether THEY can see these lists,
+ * only on whether THEIR OWN plays appear in other people's ([getSimilarListeners]
+ * is the one exception: the caller's OWN top artists are read regardless of
+ * their own opt-in, since that's just their own data being used to find
+ * people like them).
+ *
+ * [getDiscoverMix]/[getOnThisDay] return metadata only -- [BridgeTrack.id]/
+ * [BridgeTrack.source]/[BridgeTrack.youtubeUrl] must be resolved to a
+ * playable URL via [StreamingApi.stream] (through
+ * [com.stash.opusplayer.bridge.BridgeStreamResolver]) before playback, same
+ * two-step flow every other bridge-track list in this app already uses --
+ * neither endpoint embeds a directly-playable stream URL.
+ */
+/**
+ * Response of GET /user/aria/daily-pick (main.py ~L12470). [pick] is one
+ * entry from that day's [DiscoveryApi.getDiscoverMix] candidate pool
+ * (Gemini picks an index, never invents a track), so it's the same
+ * bridge-streamable, not-yet-resolved [BridgeTrack] shape -- resolve it
+ * through [com.stash.opusplayer.bridge.BridgeStreamResolver] exactly like
+ * any other Discover Mix row before playing. Cached server-side per user
+ * per UTC day, so repeat calls the same day are free. Both fields null
+ * (not an error) when the user has no play history yet to seed a pick
+ * from.
+ */
+data class AriaDailyPickResponse(
+    val pick: BridgeTrack? = null,
+    val reason: String? = null
+)
+
+/** Response of GET /music/liner-notes (main.py). Cached per-album (not per-user), unlike [AriaDailyPickResponse]'s per-user-per-day cache. [blurb] is null when the album isn't recognized/confident enough, not an error. */
+data class LinerNotesResponse(
+    val blurb: String? = null
+)
+
+interface DiscoveryApi {
+
+    /** GET /user/aria/daily-pick -- see [AriaDailyPickResponse]'s doc. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/aria/daily-pick")
+    suspend fun getAriaDailyPick(): Response<AriaDailyPickResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("music/liner-notes")
+    suspend fun getLinerNotes(@Query("artist") artist: String, @Query("album") album: String): Response<LinerNotesResponse>
+
+    /** Recomputed fresh on every call server-side (a live yt-dlp search seeded by the user's top-3 most-played artists) -- there is no server-side cache to invalidate, unlike [getArtistBio]. Empty array if the user has no play history yet. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/discover-mix")
+    suspend fun getDiscoverMix(@Query("limit") limit: Int = 20): Response<List<BridgeTrack>>
+
+    /** Grouped by year (most recent past year first), each year capped at 15 tracks server-side. Empty array if nothing was played on this calendar date in a past year. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("user/on-this-day")
+    suspend fun getOnThisDay(): Response<List<OnThisDayGroup>>
+
+    /** [name]: exact artist name to look up (not fuzzy-matched client-side -- pass whatever string the UI already has, e.g. the track's artist field). 30-day server-side cache, including negative results. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("api/artist/bio")
+    suspend fun getArtistBio(@Query("name") name: String): Response<ArtistBioResponse>
+
+    /** [days]: trailing window (max 90), [limit]: max 100. */
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("social/discover")
+    suspend fun getTrendingTracks(
+        @Query("days") days: Int = 7,
+        @Query("limit") limit: Int = 20
+    ): Response<TrendingTracksResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("social/activity")
+    suspend fun getGlobalActivity(@Query("limit") limit: Int = 30): Response<GlobalActivityResponse>
+
+    @Headers("X-Bridge-Auth-Mode: user")
+    @GET("social/similar-listeners")
+    suspend fun getSimilarListeners(@Query("limit") limit: Int = 20): Response<SimilarListenersResponse>
+}

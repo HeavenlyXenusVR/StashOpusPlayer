@@ -1,1 +1,1 @@
-Stash Audio
+StashOpusPlayer

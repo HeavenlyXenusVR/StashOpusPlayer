@@ -71,10 +71,8 @@ class GenreAdapter(
                 binding.root.layoutParams = rootLayoutParams
             }
 
-            binding.root.radius = px(10).toFloat()
-            binding.root.cardElevation = px(2).toFloat()
             binding.root.minimumHeight = px(62)
-            (binding.root.getChildAt(0) as? ViewGroup)?.setPadding(px(10), px(10), px(10), px(10))
+            binding.root.setPadding(px(16), px(8), px(16), px(8))
 
             binding.genreIcon.layoutParams = binding.genreIcon.layoutParams.apply {
                 width = px(36)

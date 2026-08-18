@@ -24,4 +24,9 @@
         android:id="@+id/action_share"
         android:title="Share"
         android:icon="@drawable/ic_share" />
+
+    <item
+        android:id="@+id/action_move_to_trash"
+        android:title="Move to Trash"
+        android:icon="@drawable/ic_delete" />
 </menu>

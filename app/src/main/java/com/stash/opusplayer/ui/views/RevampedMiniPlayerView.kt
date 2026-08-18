@@ -597,24 +597,32 @@ class RevampedMiniPlayerView @JvmOverloads constructor(
             view.layoutParams = lp
         }
 
-        binding.miniPlayerCard.radius = prefs.cardCornerRadiusDp * density * uiScale
-        binding.miniPlayerCard.setCardBackgroundColor(prefs.primaryColor)
-        binding.miniPlayerCard.cardElevation = px(if (prefs.miniPlayerCompactMode) 4 else 8, 1f).toFloat()
-        binding.miniPlayerCard.useCompatPadding = !prefs.miniPlayerCompactMode
-        updateMargins(binding.miniPlayerCard, startDp = 4, topDp = 4, endDp = 4, bottomDp = 4)
+        // YouTube-Music-style flush edge-to-edge bar: forced flat regardless of
+        // prefs.cardCornerRadiusDp/miniPlayerCompactMode's old floating-card
+        // sizing -- a rounded, elevated, margined card is the opposite of this
+        // look. See view_revamped_mini_player.xml's own doc comment.
+        binding.miniPlayerCard.radius = 0f
+        binding.miniPlayerCard.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.miniPlayerCard.cardElevation = 0f
+        binding.miniPlayerCard.useCompatPadding = false
+        updateMargins(binding.miniPlayerCard, startDp = 0, topDp = 0, endDp = 0, bottomDp = 0)
+        // Flat, non-cornered, no-stroke fill -- replaces the old static
+        // mini_player_panel_background drawable (22dp rounded corners + a
+        // hardcoded stroke color baked into the XML shape, independent of
+        // AppearancePreferences) with a plain theme-colored rectangle.
+        binding.miniPlayerContent.setBackgroundColor(prefs.primaryColor)
 
         binding.root.layoutParams = binding.root.layoutParams.apply {
             height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        binding.root.minimumHeight = px(if (prefs.miniPlayerCompactMode) 60 else 68, 1f)
-        binding.root.setPadding(px(if (prefs.miniPlayerCompactMode) 8 else 10, 1f), px(if (prefs.miniPlayerCompactMode) 8 else 10, 1f), px(if (prefs.miniPlayerCompactMode) 8 else 10, 1f), px(if (prefs.miniPlayerCompactMode) 8 else 10, 1f))
+        binding.root.minimumHeight = px(60, 1f)
+        binding.root.setPadding(px(12, 1f), 0, px(8, 1f), 0)
 
-        updateSize(binding.albumArtContainer, 46, 46)
-        updateMargins(binding.trackInfoContainer, startDp = 8, endDp = 8)
-        updateMargins(binding.progressContainer, startDp = 8, topDp = 4, endDp = 8)
-        updateSize(binding.previousButton, 28, 28, buttonScale)
+        updateSize(binding.albumArtContainer, 44, 44)
+        updateMargins(binding.trackInfoContainer, startDp = 12, endDp = 8)
+        updateSize(binding.previousButton, 30, 30, buttonScale)
         updateSize(binding.playPauseButton, 36, 36, buttonScale)
-        updateSize(binding.nextButton, 28, 28, buttonScale)
+        updateSize(binding.nextButton, 30, 30, buttonScale)
         updateMargins(binding.previousButton, endDp = 2, scale = buttonScale)
         updateMargins(binding.playPauseButton, endDp = 2, scale = buttonScale)
 
@@ -627,19 +635,14 @@ class RevampedMiniPlayerView @JvmOverloads constructor(
         binding.trackArtist.setTextColor(prefs.textSecondaryColor)
         binding.trackArtist.visibility = if (prefs.miniPlayerShowArtist) View.VISIBLE else View.GONE
         binding.albumArtContainer.visibility = if (prefs.miniPlayerShowArt) View.VISIBLE else View.GONE
-        val surface = ColorUtils.blendARGB(prefs.primaryColor, prefs.backgroundColor, 0.42f)
-        val accentSurface = ColorUtils.blendARGB(prefs.accentColor, prefs.primaryColor, 0.3f)
-        val subtleButton = ColorUtils.blendARGB(surface, prefs.backgroundColor, 0.16f)
-        binding.trackArtist.background?.mutate()?.setTint(ColorUtils.blendARGB(accentSurface, prefs.backgroundColor, 0.5f))
+        // Plain icon transport buttons (no colored circle/chip backgrounds) --
+        // the YouTube-Music look, matching this layout's flat XML background.
         binding.previousButton.imageTintList = ColorStateList.valueOf(prefs.textSecondaryColor)
         binding.nextButton.imageTintList = ColorStateList.valueOf(prefs.textSecondaryColor)
         binding.playPauseButton.imageTintList = ColorStateList.valueOf(prefs.textPrimaryColor)
-        binding.previousButton.backgroundTintList = ColorStateList.valueOf(subtleButton)
-        binding.nextButton.backgroundTintList = ColorStateList.valueOf(subtleButton)
-        binding.playPauseButton.backgroundTintList = ColorStateList.valueOf(accentSurface)
         binding.progressBar.progressTintList = ColorStateList.valueOf(prefs.accentColor)
-        binding.progressBar.thumbTintList = ColorStateList.valueOf(prefs.accentColor)
-        binding.progressBar.progressBackgroundTintList = ColorStateList.valueOf(surface)
+        binding.progressBar.thumbTintList = ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
+        binding.progressBar.progressBackgroundTintList = ColorStateList.valueOf(ColorUtils.blendARGB(prefs.primaryColor, prefs.backgroundColor, 0.42f))
         binding.currentTimeText.setTextColor(prefs.textSecondaryColor)
         binding.totalTimeText.setTextColor(prefs.textSecondaryColor)
         alpha = compactAlpha

@@ -1,38 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginStart="6dp"
-    android:layout_marginEnd="6dp"
-    android:layout_marginTop="5dp"
-    android:layout_marginBottom="5dp"
-    app:cardBackgroundColor="@color/surface_color"
-    app:cardCornerRadius="10dp"
-    app:cardElevation="2dp"
-    app:strokeColor="@color/border_gray"
-    app:strokeWidth="1dp">
-
+<!-- Flush YouTube-Music-style row: no card border/elevation, just a plain row on the screen background with a ripple on tap, separated from neighbors by whitespace rather than a boxed panel. All view ids kept identical to the old MaterialCardView version for binding compatibility. -->
 <LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical"
-    android:minHeight="72dp"
+    android:minHeight="64dp"
     android:orientation="horizontal"
-    android:padding="12dp">
+    android:paddingStart="16dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="8dp">
 
-    <ImageView
-        android:id="@+id/playlistIcon"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:layout_marginEnd="12dp"
-        android:src="@drawable/ic_playlist_add"
-        android:tint="@color/secondary_color"
-        android:contentDescription="Playlist" />
+    <FrameLayout
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:background="@drawable/rounded_corner_bg">
+
+        <ImageView
+            android:id="@+id/playlistIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:contentDescription="Playlist"
+            android:src="@drawable/ic_playlist_add"
+            android:tint="@color/secondary_color" />
+
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -40,15 +40,18 @@
             android:id="@+id/playlistName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:text="Playlist Name"
             android:textColor="@color/text_primary"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/playlistCount"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
             android:text="0 songs"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
@@ -57,13 +60,12 @@
 
     <ImageView
         android:id="@+id/playlistArrow"
-        android:layout_width="18dp"
-        android:layout_height="18dp"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
         android:layout_marginStart="6dp"
+        android:alpha="0.6"
         android:contentDescription="Open playlist"
         android:src="@drawable/ic_arrow_forward"
         android:tint="@color/text_secondary" />
 
 </LinearLayout>
-
-</com.google.android.material.card.MaterialCardView>

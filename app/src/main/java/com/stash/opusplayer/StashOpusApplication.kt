@@ -1,8 +1,13 @@
 package com.stash.opusplayer
 
 import android.app.Application
+import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
-class StashWaveApplication : Application() {
+@HiltAndroidApp
+class StashOpusApplication : Application() {
     
     // Shared player manager for the whole app
     val playerManager: com.stash.opusplayer.player.MusicPlayerManager by lazy {
@@ -16,6 +21,24 @@ class StashWaveApplication : Application() {
         installCrashLogger()
         try {
             com.stash.opusplayer.work.AutoEmbedWorker.schedule(this)
+        } catch (_: Exception) {}
+        try {
+            com.stash.opusplayer.work.LibraryScanWorker.schedule(this)
+        } catch (_: Exception) {}
+        try {
+            com.stash.opusplayer.work.CorruptFileFinderWorker.schedulePeriodic(this)
+        } catch (_: Exception) {}
+        try {
+            com.stash.opusplayer.work.MetadataTagRefreshWorker.schedulePeriodic(this)
+        } catch (_: Exception) {}
+        try {
+            com.stash.opusplayer.work.BpmAnalysisWorker.schedulePeriodic(this)
+        } catch (_: Exception) {}
+        try {
+            val db = com.stash.opusplayer.data.database.MusicDatabase.getDatabase(this)
+            GlobalScope.launch(Dispatchers.IO) {
+                com.stash.opusplayer.library.RecentlyDeletedService.purgeExpired(this@StashOpusApplication, db.recentlyDeletedDao())
+            }
         } catch (_: Exception) {}
     }
 
@@ -37,7 +60,7 @@ class StashWaveApplication : Application() {
     }
     
     companion object {
-        lateinit var instance: StashWaveApplication
+        lateinit var instance: StashOpusApplication
             private set
     }
 }

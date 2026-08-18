@@ -31,6 +31,10 @@ interface PlaylistDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTrack(track: PlaylistTrackEntity): Long
 
+    /** Batch add -- one transaction/one Flow emission instead of N, for mood-playlist generation and M3U import. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTracks(tracks: List<PlaylistTrackEntity>)
+
     @Query("DELETE FROM playlist_tracks WHERE id = :trackId")
     suspend fun deleteTrackById(trackId: Long)
 

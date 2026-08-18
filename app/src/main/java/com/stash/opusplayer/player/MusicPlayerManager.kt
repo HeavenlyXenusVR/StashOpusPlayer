@@ -15,9 +15,16 @@ import com.stash.opusplayer.audio.EnhancedAudioManager
 import com.stash.opusplayer.audio.AudioProfile
 import com.stash.opusplayer.data.Song
 import com.stash.opusplayer.service.MusicService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
@@ -29,7 +36,12 @@ class MusicPlayerManager(private val context: Context) {
 
     // Queue actions invoked before controller is ready
     private val pendingControllerActions = mutableListOf<(MediaController) -> Unit>()
-    
+
+    // Play-history logging: fires 5s after a track starts, cancelled/rescheduled
+    // on every track change so an accidental skip never logs -- see PlayHistoryLogger.
+    private val historyLogScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var historyLogJob: Job? = null
+
     private val _currentSong = MutableStateFlow<Song?>(null)
     val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
     
@@ -114,6 +126,7 @@ class MusicPlayerManager(private val context: Context) {
         try { controllerFuture?.let { MediaController.releaseFuture(it) } } catch (_: Exception) {}
         mediaController = null
         controllerFuture = null
+        historyLogJob?.cancel()
     }
     
     // Playback control methods
@@ -157,6 +170,12 @@ class MusicPlayerManager(private val context: Context) {
         _playlist.value = songs
         _currentIndex.value = idx
         _currentSong.value = songs[idx]
+        scheduleHistoryLog(_currentSong.value)
+        historyLogScope.launch {
+            withContext(Dispatchers.IO) {
+                com.stash.opusplayer.bridge.QueueSyncService.pushQueue(context, songs)
+            }
+        }
         val mediaItems = songs.map { song -> createMediaItem(song) }
         android.util.Log.d("MusicPlayerManager", "playQueue: size=${songs.size} idx=$idx firstUri=${resolveSongUri(songs.first()).toString()}")
         runWhenReady { controller ->
@@ -249,6 +268,7 @@ class MusicPlayerManager(private val context: Context) {
         if (index >= 0 && index < _playlist.value.size) {
             _currentIndex.value = index
             _currentSong.value = _playlist.value[index]
+            scheduleHistoryLog(_currentSong.value)
             runWhenReady {
                 it.seekToDefaultPosition(index)
                 it.prepare()
@@ -319,6 +339,28 @@ class MusicPlayerManager(private val context: Context) {
                 path = ""
             )
             _currentSong.value = fallback
+        }
+        scheduleHistoryLog(_currentSong.value)
+    }
+
+    /**
+     * Schedules a play-history log 5 seconds out, cancelling any pending one
+     * for the previous track first -- mirrors Lumisound's
+     * `historyLogTask?.cancel()` + `Task.sleep(5s)` + re-check pattern
+     * exactly, so a quick skip through several tracks never logs any of
+     * them, only whatever's still playing 5 seconds later.
+     */
+    private fun scheduleHistoryLog(song: Song?) {
+        historyLogJob?.cancel()
+        if (song == null || song.id == 0L || song.title.isBlank()) return
+        val songId = song.id
+        historyLogJob = historyLogScope.launch {
+            delay(5000)
+            if (_currentSong.value?.id == songId) {
+                withContext(Dispatchers.IO) {
+                    com.stash.opusplayer.history.PlayHistoryLogger.log(context, song)
+                }
+            }
         }
     }
 
